@@ -1,0 +1,82 @@
+version: '3.8'
+
+services:
+  # Backend API service
+  api:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=dynamodb://dynamodb-local:8000
+      - AWS_ENDPOINT_URL=http://localstack:4566
+      - DYNAMODB_ENDPOINT_URL=http://dynamodb-local:8000
+      - SNS_ENDPOINT_URL=http://localstack:4566
+      - S3_ENDPOINT_URL=http://localstack:4566
+      - STRANDS_MODEL_PROVIDER=mock  # Use mock for local development
+      - DEBUG=true
+    volumes:
+      - ./backend:/app
+      - ./agent_sessions:/app/agent_sessions
+    depends_on:
+      - dynamodb-local
+      - localstack
+    networks:
+      - neighbornet
+
+  # Frontend Next.js application  
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NODE_ENV=development
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - api
+    networks:
+      - neighbornet
+
+  # Local DynamoDB for development
+  dynamodb-local:
+    image: amazon/dynamodb-local:2.0.0
+    container_name: neighbornet-dynamodb
+    ports:
+      - "8001:8000"
+    command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-dbPath", "./data"]
+    volumes:
+      - ./docker-data/dynamodb:/home/dynamodblocal/data
+    networks:
+      - neighbornet
+
+  # LocalStack for AWS services (S3, SNS, EventBridge)
+  localstack:
+    image: localstack/localstack:3.0
+    container_name: neighbornet-localstack
+    ports:
+      - "4566:4566"
+      - "4510-4559:4510-4559"
+    environment:
+      - SERVICES=s3,sns,events,iam,sts
+      - DEBUG=1
+      - DATA_DIR=/tmp/localstack/data
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      - "./docker-data/localstack:/tmp/localstack"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+    networks:
+      - neighbornet
+
+networks:
+  neighbornet:
+    driver: bridge
+
+volumes:
+  dynamodb-data:
+  localstack-data:
