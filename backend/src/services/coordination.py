@@ -28,7 +28,16 @@ from src.models import (
     VolunteerAlert,
     VolunteerAlertStatus,
 )
+from src.services.dynamo_store import get_dynamo_store
 from src.services.seed_data import generate_seed_data
+
+# DynamoDB table names, matching database.py's table definitions.
+TABLE_DISASTERS = "DisasterEvents"
+TABLE_ALERTS = "VolunteerAlerts"
+TABLE_TASKS = "Tasks"
+TABLE_DECISIONS = "Decisions"
+TABLE_VOLUNTEERS = "Volunteers"
+TABLE_USERS = "Users"
 
 
 @dataclass
@@ -54,7 +63,9 @@ class CoordinationService:
         self.planning = PlanningEngine()
         self.recovery = RecoveryEngine()
         self.state = CoordinationState()
-        self.reset()
+        self.store = get_dynamo_store()
+        if not (self.store.enabled and self.load_from_dynamodb()):
+            self.reset()
 
     def reset(self) -> Dict[str, int]:
         """Reset local state from seed data."""
@@ -68,7 +79,50 @@ class CoordinationService:
             disasters=seed["disasters"],
             disaster_needs=seed["disaster_needs"],
         )
+        if self.store.enabled:
+            # First run against a fresh/empty shared table: seed it so every
+            # teammate's backend starts from the same shared state.
+            for volunteer in self.state.volunteers:
+                self.store.put(TABLE_VOLUNTEERS, volunteer.model_dump(mode="json"))
+            for user in self.state.users:
+                self.store.put(TABLE_USERS, user.model_dump(mode="json"))
         return self.summary_counts()
+
+    def load_from_dynamodb(self) -> bool:
+        """Rehydrate state from the shared DynamoDB tables. Returns True if
+        any persisted data was found (so callers can skip reseeding)."""
+
+        volunteer_items = self.store.scan_all(TABLE_VOLUNTEERS)
+        if not volunteer_items:
+            return False
+
+        seed = generate_seed_data()
+        self.state = CoordinationState(
+            users=[User.model_validate(item) for item in self.store.scan_all(TABLE_USERS)]
+            or seed["users"],
+            inventory=seed["inventory"],
+            requests=seed["requests"],
+            volunteers=[Volunteer.model_validate(item) for item in volunteer_items],
+            disasters=[
+                DisasterEvent.model_validate(item)
+                for item in self.store.scan_all(TABLE_DISASTERS)
+            ],
+        )
+        self.state.alerts = [
+            VolunteerAlert.model_validate(item) for item in self.store.scan_all(TABLE_ALERTS)
+        ]
+        self.state.tasks = [
+            CoordinationTask.model_validate(item) for item in self.store.scan_all(TABLE_TASKS)
+        ]
+        self.state.decisions = [
+            Decision.model_validate(item) for item in self.store.scan_all(TABLE_DECISIONS)
+        ]
+        return True
+
+    def _persist(self, table_name: str, model) -> None:
+        """Write-through one model to the shared DynamoDB table, if enabled."""
+
+        self.store.put(table_name, model.model_dump(mode="json"))
 
     def summary_counts(self) -> Dict[str, int]:
         """Return entity counts for health/dashboard."""
@@ -165,6 +219,7 @@ class CoordinationService:
         if task:
             task.task_id = "task_normal_surplus_delivery"
             self.state.tasks.append(task)
+            self._persist(TABLE_TASKS, task)
             self._record_event("Normal surplus delivery task created", "normal")
         return task
 
@@ -198,6 +253,7 @@ class CoordinationService:
             )
         self.state.disasters.append(disaster)
         self.state.disaster_needs.extend(disaster.needs)
+        self._persist(TABLE_DISASTERS, disaster)
         self._record_event(f"Disaster created: {disaster.title}", "disaster")
         return disaster
 
@@ -225,6 +281,7 @@ class CoordinationService:
                 assistance_required="Food delivery, water distribution, or shelter support",
             )
             self.state.alerts.append(alert)
+            self._persist(TABLE_ALERTS, alert)
             new_alerts.append(alert)
         self._record_event(f"Disaster alerts sent: {len(new_alerts)}", "disaster")
         return new_alerts
@@ -241,6 +298,7 @@ class CoordinationService:
             alert.timeout()
         else:
             raise ValueError("response must be accept, decline, or timeout")
+        self._persist(TABLE_ALERTS, alert)
         self._record_event(f"Volunteer alert {response}: {alert_id}", "disaster")
         return alert
 
@@ -263,6 +321,8 @@ class CoordinationService:
         for index, task in enumerate(tasks, start=1):
             task.task_id = f"task_{disaster_id}_{index}"
         self.state.tasks.extend(tasks)
+        for task in tasks:
+            self._persist(TABLE_TASKS, task)
         self._record_event(f"Disaster tasks assigned: {len(tasks)}", "disaster")
         return tasks
 
@@ -272,6 +332,7 @@ class CoordinationService:
         task = self.get_task(task_id)
         task.status = status
         task.updated_at = datetime.now()
+        self._persist(TABLE_TASKS, task)
         self._record_event(f"Task status changed: {task_id} -> {status.value}", task.operating_mode.value)
         return task
 
@@ -285,6 +346,8 @@ class CoordinationService:
         )
         repaired = result["repaired"]
         self.state.tasks.extend(repaired)
+        for task in repaired:
+            self._persist(TABLE_TASKS, task)
 
         if disruption.get("create_amber_decision", True):
             decision = Decision(
@@ -308,6 +371,7 @@ class CoordinationService:
                 confidence_level=0.84,
             )
             self.state.decisions.append(decision)
+            self._persist(TABLE_DECISIONS, decision)
 
         self._record_event("Recovery completed", str(disruption.get("operating_mode", "disaster")))
         return result
@@ -322,6 +386,7 @@ class CoordinationService:
             decision.selected_option_id = decision.options[0].option_id
         decision.approve(coordinator_id, "Coordinator", "coordinator")
         decision.decided_at = datetime.now()
+        self._persist(TABLE_DECISIONS, decision)
         self._record_event(f"Decision approved: {decision_id}", "disaster")
         return decision
 
