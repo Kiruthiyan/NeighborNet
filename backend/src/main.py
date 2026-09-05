@@ -47,14 +47,20 @@ async def lifespan(app: FastAPI):
     )
     
     # Initialize database
-    try:
-        await initialize_database()
-        logger.info("Database initialized successfully")
-    except Exception as e:
-        logger.error("Failed to initialize database", error=str(e))
-        if not (settings.demo_mode and settings.is_development):
-            raise
-        logger.warning("Continuing with in-memory demo store")
+    if settings.persist_to_dynamodb:
+        try:
+            await initialize_database()
+            logger.info("Database initialized successfully", shared_persistence=True)
+        except Exception as e:
+            logger.error("Failed to initialize database", error=str(e))
+            if not (settings.demo_mode and settings.is_development):
+                raise
+            logger.warning("Continuing with in-memory demo store")
+    else:
+        logger.info(
+            "PERSIST_TO_DYNAMODB is disabled: running with in-memory demo store only "
+            "(data resets on restart, not shared across teammates)"
+        )
     
     # Initialize Strands agents (will be implemented in later tasks)
     # try:
