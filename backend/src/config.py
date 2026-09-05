@@ -59,6 +59,7 @@ class Settings(BaseSettings):
         alias="DYNAMODB_ENDPOINT_URL"
     )
     dynamodb_region: str = Field(default="us-west-2", alias="DYNAMODB_REGION")
+    persist_to_dynamodb: bool = Field(default=False, alias="PERSIST_TO_DYNAMODB")
     
     # API Configuration
     api_host: str = Field(default="0.0.0.0", alias="API_HOST")
@@ -132,7 +133,9 @@ class Settings(BaseSettings):
             return [item.strip() for item in value.split(",") if item.strip()]
         return value
 
-    @field_validator("debug", "demo_mode", "demo_data_reset_on_start", mode="before")
+    @field_validator(
+        "debug", "demo_mode", "demo_data_reset_on_start", "persist_to_dynamodb", mode="before"
+    )
     @classmethod
     def parse_boolish(cls, value):
         """Accept common deployment strings for booleans."""
