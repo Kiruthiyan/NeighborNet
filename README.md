@@ -31,9 +31,11 @@ Implemented:
 - Real Strands Agents SDK orchestrator (`src/agents/strands_orchestrator.py`) running on Amazon Bedrock, exposed via `POST /api/agent/instruct`. It takes a natural-language coordinator instruction and decides which deterministic tools (`src/agents/strands_tools.py`) to call — the tools are thin wrappers over the same `CoordinationService`/engines the rest of the app uses, so the LLM never invents matching/assignment/recovery/risk logic of its own. There is deliberately no tool for RED-tier actions (medical/evacuation/rescue/unsafe travel/restricted-zone entry), and AMBER outcomes always create a pending `Decision` the agent cannot approve itself. Requires `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` with Bedrock access for the configured `BEDROCK_MODEL_ID` (defaults to `us.amazon.nova-pro-v1:0`); covered by `tests/test_agent_api.py` with the Bedrock call mocked so the suite runs without live credentials.
 - The local `agents/orchestrator.py`/`sentinel.py`/`planner.py`/`recovery.py` deterministic facades remain in place underneath — the Strands agent is an additional LLM-driven entry point on top of them, not a replacement.
 
+- Optional shared persistence: `PERSIST_TO_DYNAMODB=true` (see `.env.example`) makes `CoordinationService` write-through disasters, alerts, tasks, decisions, users, and volunteers to real AWS DynamoDB tables and reload from them on startup, so a 3-person team pointed at the same AWS account sees the same live state instead of each person's own reset-on-restart in-memory copy. Disabled by default so local dev and the test suite need no AWS credentials at all; covered by `tests/test_dynamo_persistence.py` with a fake in-memory store (no real AWS needed to run tests).
+
 Still P1/P2:
 
-- Durable repository wiring for the new workflow tables
+- Durable repository wiring for inventory/requests and the remaining tables not yet covered by the new opt-in DynamoDB persistence (see above)
 - AgentCore Runtime packaging on port `8080` with `/ping` and `/invocations`
 - EventBridge, SNS/SES, AgentCore Memory, CloudWatch, S3 audit exports, and production auth
 - 100+ scenario evaluation suite
