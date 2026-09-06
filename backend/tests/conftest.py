@@ -13,6 +13,14 @@ os.environ["NODE_ENV"] = "test"
 os.environ["DEBUG"] = "true"
 os.environ["STRANDS_MODEL_PROVIDER"] = "mock"
 
+# Always run the suite fully in-memory, even if a developer's local
+# backend/.env has PERSIST_TO_DYNAMODB=true set for running the real app.
+# Actual environment variables take priority over .env file values in
+# pydantic-settings, so this reliably overrides it. Without this, tests
+# would silently hit real AWS over the network on every reset() call
+# (slow, and would pollute the shared team DynamoDB tables with test data).
+os.environ["PERSIST_TO_DYNAMODB"] = "false"
+
 
 @pytest.fixture(scope="session")
 def event_loop():
