@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from typing import Optional
 
+import boto3
 from strands import Agent
 from strands.models.bedrock import BedrockModel
 
@@ -62,9 +63,16 @@ def build_agent(model_id: Optional[str] = None) -> Agent:
 
     settings = get_settings()
     bedrock_config = settings.get_bedrock_config()
+    # Explicit session so credentials come from our settings/.env, not
+    # boto3's default chain (which won't see pydantic-settings values that
+    # were never exported into the process's real environment variables).
+    aws_config = settings.get_aws_config()
+    aws_config.pop("endpoint_url", None)  # boto3.Session() has no endpoint_url param
+    aws_config["region_name"] = bedrock_config["region_name"]
+    session = boto3.Session(**aws_config)
     model = BedrockModel(
+        boto_session=session,
         model_id=model_id or bedrock_config["model_id"],
-        region_name=bedrock_config["region_name"],
         temperature=bedrock_config["temperature"],
         max_tokens=bedrock_config["max_tokens"],
     )
