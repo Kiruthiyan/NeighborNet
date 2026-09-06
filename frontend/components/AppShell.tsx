@@ -22,6 +22,8 @@ export const disasterNavItems = [
   { label: "Disaster Task Board", href: "/disaster-tasks" }
 ];
 
+export const agentNavItems = [{ label: "Agent Console", href: "/agent" }];
+
 export function AppShell({
   children,
   title,
@@ -59,8 +61,19 @@ export function AppShell({
           <div className="mb-2 px-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
             Disaster Response
           </div>
-          <nav className="grid gap-1">
+          <nav className="mb-6 grid gap-1">
             {disasterNavItems.map((item) => (
+              <NavLink href={item.href} key={item.href}>
+                {item.label}
+              </NavLink>
+            ))}
+          </nav>
+
+          <div className="mb-2 px-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
+            AI Agent
+          </div>
+          <nav className="grid gap-1">
+            {agentNavItems.map((item) => (
               <NavLink href={item.href} key={item.href}>
                 {item.label}
               </NavLink>
