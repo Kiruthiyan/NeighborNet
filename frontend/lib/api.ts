@@ -322,3 +322,23 @@ export function dispatchDisaster(disasterId: string) {
 export function assignDisasterTasks(disasterId: string) {
   return apiPost<CoordinationTask[]>(`/disasters/${disasterId}/assign`);
 }
+
+export interface AgentInstructionResult {
+  response: string;
+}
+
+export async function instructAgent(instruction: string): Promise<AgentInstructionResult> {
+  const response = await fetch(`${API_BASE_URL}/agent/instruct`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ instruction }),
+    cache: "no-store"
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const detail =
+      typeof payload?.error === "string" ? payload.error : `Agent call failed: ${response.status}`;
+    throw new Error(detail);
+  }
+  return payload as AgentInstructionResult;
+}
