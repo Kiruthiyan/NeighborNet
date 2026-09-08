@@ -27,10 +27,11 @@ class DatabaseService:
         """Get DynamoDB client (low-level)."""
         if self._client is None:
             config = self.settings.get_aws_config()
-            
+
             if self.settings.dynamodb_endpoint_url:
                 config["endpoint_url"] = self.settings.dynamodb_endpoint_url
-            
+            config["config"] = self.settings.get_boto_client_config()
+
             self._client = boto3.client("dynamodb", **config)
             
         return self._client
@@ -40,10 +41,11 @@ class DatabaseService:
         """Get DynamoDB resource (high-level)."""
         if self._resource is None:
             config = self.settings.get_aws_config()
-            
+
             if self.settings.dynamodb_endpoint_url:
                 config["endpoint_url"] = self.settings.dynamodb_endpoint_url
-                
+            config["config"] = self.settings.get_boto_client_config()
+
             self._resource = boto3.resource("dynamodb", **config)
             
         return self._resource

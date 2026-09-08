@@ -53,7 +53,11 @@ def test_agent_instruct_surfaces_upstream_failure(
         json={"instruction": "Summarize current disaster status."},
     )
     assert response.status_code == 502
-    assert "credentials" in response.json()["error"].lower()
+    error = response.json()["error"].lower()
+    # The client-facing message must stay generic and must never leak the
+    # raw upstream exception text (which can contain AWS account/IAM details).
+    assert "bedrock" in error
+    assert "no aws credentials configured" not in error
 
 
 def test_agent_tools_have_no_red_tier_actions():

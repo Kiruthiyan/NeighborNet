@@ -7,10 +7,12 @@ the result. Every underlying action is still governed by the existing
 deterministic engines and risk gating — see src/agents/strands_tools.py.
 """
 
+import structlog
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 router = APIRouter()
+logger = structlog.get_logger(__name__)
 
 
 class AgentInstructionRequest(BaseModel):
@@ -33,12 +35,13 @@ async def instruct_agent(payload: AgentInstructionRequest):
     try:
         response = run_instruction(payload.instruction, model_id=payload.model_id)
     except Exception as exc:  # pragma: no cover - depends on live Bedrock access
+        logger.error("Strands agent call failed", error=str(exc))
         raise HTTPException(
             status_code=502,
             detail=(
-                "Strands agent call failed. Check AWS_ACCESS_KEY_ID/"
-                "AWS_SECRET_ACCESS_KEY/BEDROCK_MODEL_ID and that Bedrock model "
-                f"access is enabled in your account/region. Original error: {exc}"
+                "The AI coordinator is temporarily unavailable (Amazon Bedrock "
+                "call failed). Check Bedrock model access/permissions for this "
+                "AWS account and region, or try again shortly."
             ),
         ) from exc
     return AgentInstructionResponse(response=response)

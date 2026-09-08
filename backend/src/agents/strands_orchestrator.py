@@ -72,6 +72,7 @@ def build_agent(model_id: Optional[str] = None) -> Agent:
     session = boto3.Session(**aws_config)
     model = BedrockModel(
         boto_session=session,
+        boto_client_config=settings.get_boto_client_config(),
         model_id=model_id or bedrock_config["model_id"],
         temperature=bedrock_config["temperature"],
         max_tokens=bedrock_config["max_tokens"],

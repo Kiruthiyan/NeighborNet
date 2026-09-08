@@ -350,11 +350,30 @@ class CoordinationService:
             self._persist(TABLE_TASKS, task)
 
         if disruption.get("create_amber_decision", True):
+            reason = disruption.get("reason")
+            zone = disruption.get("zone")
+            volunteer_id = disruption.get("volunteer_id")
+
+            title = f"Approve recovery: {reason}" if reason else "Approve disaster recovery conflict"
+
+            description_parts = [
+                str(reason) if reason else "A disruption affected active recovery tasks.",
+            ]
+            if volunteer_id:
+                description_parts.append(f"Volunteer {volunteer_id} unavailable.")
+            if zone:
+                description_parts.append(f"Zone affected: {zone}.")
+            description_parts.append(
+                f"{result['affected_count']} task(s) affected, "
+                f"{result['repaired_count']} repaired via reassignment."
+            )
+            description = " ".join(description_parts)
+
             decision = Decision(
                 decision_id="decision_meaningful_amber_conflict",
                 decision_type=DecisionType.RECOVERY_STRATEGY,
-                title="Approve disaster recovery conflict",
-                description="Two high-priority tasks compete for the same best volunteer.",
+                title=title,
+                description=description,
                 context={
                     "triggering_event": disruption,
                     "affected_count": result["affected_count"],

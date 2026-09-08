@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 from typing import Optional
 
+from botocore.config import Config as BotoClientConfig
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -178,6 +179,18 @@ class Settings(BaseSettings):
             "temperature": self.bedrock_model_temperature,
             "max_tokens": self.bedrock_model_max_tokens,
         }
+
+    def get_boto_client_config(self) -> BotoClientConfig:
+        """Conservative timeout/retry settings shared by boto3 clients.
+
+        Without this, a hung or unreachable AWS endpoint (DynamoDB, Bedrock)
+        can block a request far longer than acceptable in a live demo.
+        """
+        return BotoClientConfig(
+            connect_timeout=5,
+            read_timeout=30,
+            retries={"max_attempts": 2, "mode": "standard"},
+        )
 
 
 # Global settings instance
