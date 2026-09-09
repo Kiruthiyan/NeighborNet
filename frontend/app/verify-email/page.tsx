@@ -29,7 +29,7 @@ function VerifyEmailForm() {
     try {
       const profile = await verifyEmail(email, otp);
       setUser(profile);
-      router.push("/");
+      router.push("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Verification failed");
     } finally {
@@ -99,7 +99,7 @@ function VerifyEmailForm() {
         >
           Resend code
         </button>
-        <Link className="text-slate-500" href="/">
+        <Link className="text-slate-500" href="/dashboard">
           Skip for now
         </Link>
       </div>

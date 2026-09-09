@@ -1,143 +1,249 @@
+"use client";
+
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 import {
-  Activity,
-  AlertTriangle,
-  CheckCircle2,
   ClipboardList,
-  LucideIcon,
-  Package,
-  Route,
+  HandHeart,
+  Radio,
   ShieldCheck,
   Truck,
-  Users
+  Zap
 } from "lucide-react";
-import { AppShell } from "../components/AppShell";
-import { CapabilityPanel } from "../components/CapabilityPanel";
-import { Badge, EmptyState, Panel, StatCard, riskTone } from "../components/ui";
-import { label } from "../lib/format";
-import { getAlerts, getDashboardMetrics, getDisasterOverview, getTasks } from "../lib/api";
+import { NetworkIllustration } from "../components/NetworkIllustration";
+import { useAuth } from "../lib/auth";
 
-export const dynamic = "force-dynamic";
+const roleCards = [
+  {
+    icon: ClipboardList,
+    title: "Request help",
+    description: "Every account can ask for food, supplies, or support - no approval needed to start.",
+    tone: "text-leaf"
+  },
+  {
+    icon: HandHeart,
+    title: "Donate",
+    description: "Flip on Donor from your dashboard to list surplus meals, produce, or pantry items.",
+    tone: "text-leaf"
+  },
+  {
+    icon: Truck,
+    title: "Volunteer",
+    description: "Flip on Volunteer to get alerted for nearby deliveries and disaster-response tasks.",
+    tone: "text-flood"
+  },
+  {
+    icon: ShieldCheck,
+    title: "Coordinate",
+    description: "Coordinators review risky decisions and dispatch disaster response - granted by an admin.",
+    tone: "text-flood"
+  }
+];
 
-const boardColumns = ["available", "accepted", "assigned", "in_progress", "completed", "needs_attention"];
+const steps = [
+  {
+    n: "01",
+    title: "Create your account",
+    description: "Sign up with just an email and password. You start as a recipient, always able to ask for help."
+  },
+  {
+    n: "02",
+    title: "Choose how else you help",
+    description: "Opt in to donate or volunteer any time, straight from your dashboard - or get invited in as a coordinator."
+  },
+  {
+    n: "03",
+    title: "The network does the routing",
+    description: "Requests, donations, and volunteers get matched automatically - and re-routed the moment something changes."
+  }
+];
 
-export default async function DashboardPage() {
-  const [metrics, disaster, tasks, alerts] = await Promise.all([
-    getDashboardMetrics(),
-    getDisasterOverview(),
-    getTasks(),
-    getAlerts()
-  ]);
+export default function LandingPage() {
+  const { user, loading } = useAuth();
+  const router = useRouter();
 
-  const metricCards: Array<[string, string | number, LucideIcon]> = [
-    ["Community Readiness", `${metrics.community_readiness}%`, ShieldCheck],
-    ["Active Requests", metrics.active_requests, ClipboardList],
-    ["Inventory", metrics.inventory_batches, Package],
-    ["Active Volunteers", metrics.active_volunteers, Users],
-    ["Active Tasks", metrics.active_tasks, Route],
-    ["Human Decisions Avoided", metrics.human_decisions_avoided, CheckCircle2]
-  ];
+  useEffect(() => {
+    if (!loading && user) {
+      router.replace("/dashboard");
+    }
+  }, [loading, user, router]);
 
   return (
-    <AppShell
-      description="Normal food recovery and disaster volunteer dispatch share the same resources, tasks, recovery engine, and audit trail."
-      title="Unified Coordination Dashboard"
-    >
-      <div className="mb-5 flex items-center gap-2 rounded border border-flood/25 bg-white px-3 py-2 text-sm text-flood">
-        <Activity size={17} />
-        <span>Normal + Disaster Mode</span>
-        {metrics.pending_human_decisions > 0 && (
-          <span className="ml-auto">
-            <Badge tone="amber">{metrics.pending_human_decisions} pending decisions</Badge>
+    <main className="min-h-screen overflow-x-hidden bg-mist text-ink">
+      {/* Nav */}
+      <header className="sticky top-0 z-10 border-b border-slate-200/70 bg-mist/90 backdrop-blur">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 sm:px-6">
+          <div className="flex items-center gap-3">
+            <div className="grid h-9 w-9 place-items-center rounded bg-leaf text-white">
+              <Radio size={18} />
+            </div>
+            <div className="text-sm font-semibold">NeighborNet</div>
+          </div>
+          <div className="flex items-center gap-2 sm:gap-3">
+            <Link
+              className="rounded px-3 py-2 text-sm font-medium text-ink hover:bg-slate-100"
+              href="/login"
+            >
+              Sign in
+            </Link>
+            <Link
+              className="rounded bg-leaf px-3 py-2 text-sm font-medium text-white hover:bg-leaf/90"
+              href="/signup"
+            >
+              Get started
+            </Link>
+          </div>
+        </div>
+      </header>
+
+      {/* Hero */}
+      <section className="mx-auto grid max-w-6xl gap-10 px-4 py-14 sm:px-6 sm:py-20 lg:grid-cols-[1.1fr_0.9fr] lg:items-center lg:py-28">
+        <div>
+          <span className="inline-flex items-center gap-2 rounded-full border border-leaf/30 bg-field px-3 py-1 text-xs font-semibold uppercase tracking-wide text-leaf">
+            <Zap size={12} />
+            One network, normal days and disasters alike
           </span>
-        )}
-      </div>
+          <h1 className="mt-5 text-3xl font-semibold leading-tight tracking-tight sm:text-4xl lg:text-5xl">
+            The community plan that repairs itself when reality changes.
+          </h1>
+          <p className="mt-5 max-w-xl text-base text-slate-600 sm:text-lg">
+            NeighborNet connects neighbors who need help with the neighbors who can give it - food,
+            supplies, and volunteer time - and automatically re-routes the plan the moment a
+            delivery falls through or a disaster hits.
+          </p>
+          <div className="mt-8 flex flex-wrap items-center gap-3">
+            <Link
+              className="rounded bg-leaf px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-leaf/90"
+              href="/signup"
+            >
+              Create free account
+            </Link>
+            <Link
+              className="rounded border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-ink hover:bg-slate-50"
+              href="/login"
+            >
+              Sign in
+            </Link>
+          </div>
+          <p className="mt-4 text-xs text-slate-500">
+            No credit card. Every account starts as a recipient - opt into donating or volunteering
+            whenever you're ready.
+          </p>
+        </div>
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-        {metricCards.map(([title, value, Icon]) => (
-          <StatCard icon={Icon} key={String(title)} title={title} value={value} />
-        ))}
+        <div className="relative mx-auto aspect-square w-full max-w-md">
+          <div className="absolute inset-6 rounded-full bg-field/70 blur-2xl" aria-hidden="true" />
+          <div className="relative h-full w-full rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <NetworkIllustration />
+          </div>
+        </div>
       </section>
 
-      <section className="mt-5">
-        <CapabilityPanel />
+      {/* Two modes, one platform */}
+      <section className="border-y border-slate-200 bg-white py-14 sm:py-20">
+        <div className="mx-auto max-w-6xl px-4 sm:px-6">
+          <h2 className="text-center text-2xl font-semibold sm:text-3xl">
+            Two modes. The same neighbors.
+          </h2>
+          <p className="mx-auto mt-3 max-w-2xl text-center text-sm text-slate-600 sm:text-base">
+            Normal-day food recovery and disaster volunteer dispatch share the same resources,
+            people, and safety rules - so nothing has to be rebuilt when things go wrong.
+          </p>
+
+          <div className="mt-10 grid gap-5 sm:grid-cols-2">
+            <div className="rounded-lg border border-leaf/25 bg-field/60 p-6">
+              <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-xs font-semibold uppercase tracking-wide text-leaf">
+                Normal day
+              </div>
+              <ul className="grid gap-2 text-sm text-slate-700">
+                <li>Surplus food and supplies get matched to nearby requests.</li>
+                <li>Volunteers pick up flexible delivery windows near them.</li>
+                <li>Low-risk matches happen automatically, no waiting on a human.</li>
+              </ul>
+            </div>
+            <div className="rounded-lg border border-flood/25 bg-white p-6">
+              <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-flood/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-flood">
+                Disaster response
+              </div>
+              <ul className="grid gap-2 text-sm text-slate-700">
+                <li>Nearby verified volunteers are alerted the moment a need is logged.</li>
+                <li>Risky or uncertain actions pause for a coordinator's approval.</li>
+                <li>A blocked route or a cancellation triggers an automatic re-plan.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
       </section>
 
-      <section className="mt-5 grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
-        <Panel icon={AlertTriangle} iconClassName="text-alert" title="Disaster Overview">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {[
-              ["Nearby Volunteers", disaster.nearby_volunteers],
-              ["Alerted", disaster.volunteers_alerted],
-              ["Accepted", disaster.volunteers_accepted],
-              ["Assigned", disaster.tasks_assigned],
-              ["Completed", disaster.tasks_completed],
-              ["Unresolved", disaster.unresolved_tasks],
-              ["Recovery Actions", disaster.recovery_actions],
-              ["Pending Decisions", metrics.pending_human_decisions]
-            ].map(([title, value]) => (
-              <div className="rounded border border-slate-200 bg-slate-50 p-3" key={String(title)}>
-                <div className="text-xs text-slate-500">{title}</div>
-                <div className="mt-1 text-xl font-semibold">{String(value)}</div>
+      {/* Roles */}
+      <section className="mx-auto max-w-6xl px-4 py-14 sm:px-6 sm:py-20">
+        <h2 className="text-center text-2xl font-semibold sm:text-3xl">Everyone starts the same way</h2>
+        <p className="mx-auto mt-3 max-w-2xl text-center text-sm text-slate-600 sm:text-base">
+          One account, capabilities you turn on yourself - except coordinator, which an admin grants.
+        </p>
+        <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {roleCards.map(({ icon: Icon, title, description, tone }) => (
+            <div className="rounded-lg border border-slate-200 bg-white p-5" key={title}>
+              <Icon className={tone} size={22} />
+              <div className="mt-3 text-sm font-semibold">{title}</div>
+              <p className="mt-1 text-sm text-slate-600">{description}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* How it works */}
+      <section className="border-t border-slate-200 bg-white py-14 sm:py-20">
+        <div className="mx-auto max-w-6xl px-4 sm:px-6">
+          <h2 className="text-center text-2xl font-semibold sm:text-3xl">How it works</h2>
+          <div className="mt-10 grid gap-8 sm:grid-cols-3">
+            {steps.map((step) => (
+              <div key={step.n}>
+                <div className="text-3xl font-semibold text-leaf/30">{step.n}</div>
+                <div className="mt-2 text-base font-semibold">{step.title}</div>
+                <p className="mt-1 text-sm text-slate-600">{step.description}</p>
               </div>
             ))}
           </div>
-        </Panel>
-
-        <Panel icon={Users} iconClassName="text-leaf" title="Volunteer Response">
-          <div className="grid gap-2">
-            {alerts.slice(0, 6).map((alert) => (
-              <div
-                className="grid grid-cols-[1fr_auto] gap-3 rounded border border-slate-200 p-3"
-                key={alert.alert_id}
-              >
-                <div>
-                  <div className="text-sm font-medium">{alert.volunteer_id}</div>
-                  <div className="mt-1 text-xs text-slate-500">
-                    {label(alert.task_category)} · {alert.approximate_distance} mi
-                  </div>
-                </div>
-                <Badge tone={alert.status === "declined" ? "neutral" : "green"}>
-                  {label(alert.status)}
-                </Badge>
-              </div>
-            ))}
-            {alerts.length === 0 && (
-              <EmptyState>No alerts yet. Run the flood demo or dispatch a disaster.</EmptyState>
-            )}
-          </div>
-        </Panel>
+        </div>
       </section>
 
-      <section className="mt-5">
-        <Panel icon={Truck} iconClassName="text-flood" title="Active Plan / Task Board">
-          <div className="grid gap-3 xl:grid-cols-5">
-            {boardColumns.map((column) => (
-              <div className="min-h-48 rounded border border-slate-200 bg-slate-50 p-3" key={column}>
-                <div className="mb-3 text-xs font-semibold uppercase text-slate-500">
-                  {label(column)}
-                </div>
-                <div className="grid gap-2">
-                  {tasks
-                    .filter((task) => task.status === column)
-                    .slice(0, 4)
-                    .map((task) => (
-                      <article className="rounded border border-slate-200 bg-white p-3" key={task.task_id}>
-                        <div className="text-sm font-medium">{task.title}</div>
-                        <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                          <Badge>{label(task.operating_mode)}</Badge>
-                          <Badge>{label(task.priority)}</Badge>
-                          <Badge tone={riskTone(task.risk_classification)}>
-                            {label(task.risk_classification)}
-                          </Badge>
-                        </div>
-                      </article>
-                    ))}
-                </div>
-              </div>
-            ))}
+      {/* Final CTA */}
+      <section className="bg-leaf py-14 text-white sm:py-20">
+        <div className="mx-auto max-w-3xl px-4 text-center sm:px-6">
+          <h2 className="text-2xl font-semibold sm:text-3xl">Ready to strengthen your neighborhood?</h2>
+          <p className="mt-3 text-sm text-white/85 sm:text-base">
+            Join as a recipient, donor, or volunteer in under a minute.
+          </p>
+          <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
+            <Link
+              className="rounded bg-white px-5 py-3 text-sm font-semibold text-leaf hover:bg-white/90"
+              href="/signup"
+            >
+              Create free account
+            </Link>
+            <Link
+              className="rounded border border-white/40 px-5 py-3 text-sm font-semibold text-white hover:bg-white/10"
+              href="/login"
+            >
+              Sign in
+            </Link>
           </div>
-        </Panel>
+        </div>
       </section>
-    </AppShell>
+
+      <footer className="border-t border-slate-200 py-8">
+        <div className="mx-auto flex max-w-6xl flex-col items-center gap-2 px-4 text-center text-xs text-slate-500 sm:flex-row sm:justify-between sm:px-6 sm:text-left">
+          <div className="flex items-center gap-2">
+            <div className="grid h-6 w-6 place-items-center rounded bg-leaf text-white">
+              <Radio size={12} />
+            </div>
+            <span className="font-medium text-slate-600">NeighborNet</span>
+          </div>
+          <span>Autonomous community resource coordination.</span>
+        </div>
+      </footer>
+    </main>
   );
 }

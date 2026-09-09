@@ -8,7 +8,7 @@ import { NavLink } from "./NavLink";
 import { useAuth } from "../lib/auth";
 
 export const navItems = [
-  { label: "Dashboard", href: "/" },
+  { label: "Dashboard", href: "/dashboard" },
   { label: "Resources", href: "/resources" },
   { label: "Requests", href: "/requests" }
 ];
@@ -83,7 +83,7 @@ export function AppShell({
     if (!user) {
       router.replace("/login");
     } else if (requireAdmin && !user.is_admin) {
-      router.replace("/");
+      router.replace("/dashboard");
     }
   }, [loading, user, requireAdmin, router]);
 
@@ -101,7 +101,7 @@ export function AppShell({
     <main className="min-h-screen bg-mist text-ink">
       <div className="grid min-h-screen grid-cols-1 lg:grid-cols-[240px_1fr]">
         <aside className="border-b border-slate-200 bg-white px-5 py-4 lg:sticky lg:top-0 lg:h-screen lg:overflow-y-auto lg:border-b-0 lg:border-r">
-          <Link className="mb-8 flex items-center gap-3" href="/">
+          <Link className="mb-8 flex items-center gap-3" href="/dashboard">
             <div className="grid h-10 w-10 place-items-center rounded bg-leaf text-white">
               <Radio size={21} />
             </div>
@@ -137,7 +137,7 @@ export function AppShell({
                 className="rounded p-2 text-slate-400 hover:bg-slate-100 hover:text-ink"
                 onClick={() => {
                   logout();
-                  router.push("/login");
+                  router.push("/");
                 }}
                 title="Log out"
                 type="button"
