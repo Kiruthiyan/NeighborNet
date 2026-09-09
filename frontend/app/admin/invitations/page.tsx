@@ -25,6 +25,7 @@ export default function AdminInvitationsPage() {
   const [grantVolunteer, setGrantVolunteer] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
 
   async function load() {
@@ -43,6 +44,7 @@ export default function AdminInvitationsPage() {
     event.preventDefault();
     setBusy(true);
     setError(null);
+    setNotice(null);
     try {
       const invitation = await createInvitation({
         email,
@@ -55,6 +57,11 @@ export default function AdminInvitationsPage() {
       setGrantCoordinator(false);
       setGrantDonor(false);
       setGrantVolunteer(false);
+      setNotice(
+        invitation.email_sent
+          ? `Invitation emailed to ${invitation.email}.`
+          : "Invitation created, but the email wasn't sent (email delivery isn't configured, or the send failed) - copy the signup link below and share it directly."
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create invitation");
     } finally {
@@ -137,6 +144,7 @@ export default function AdminInvitationsPage() {
             </label>
           </div>
           {error && <p className="text-sm text-danger sm:col-span-2">{error}</p>}
+          {notice && <p className="text-sm text-slate-600 sm:col-span-2">{notice}</p>}
           <button
             className="justify-self-start rounded bg-leaf px-3 py-2 text-sm font-medium text-white hover:bg-leaf/90 disabled:opacity-50 sm:col-span-2"
             disabled={busy}
@@ -151,7 +159,7 @@ export default function AdminInvitationsPage() {
         {!invitations && <EmptyState>Loading invitations…</EmptyState>}
         {invitations && invitations.length === 0 && <EmptyState>No invitations yet.</EmptyState>}
         {invitations && invitations.length > 0 && (
-          <Table columns={["Email", "Granted", "Status", "Link", "Actions"]}>
+          <Table columns={["Email", "Granted", "Status", "Delivery", "Link", "Actions"]}>
             {invitations.map((invitation) => (
               <tr key={invitation.invite_id}>
                 <td className="px-4 py-3">{invitation.email}</td>
@@ -166,6 +174,11 @@ export default function AdminInvitationsPage() {
                 </td>
                 <td className="px-4 py-3">
                   <Badge tone={statusTone(invitation.status)}>{invitation.status}</Badge>
+                </td>
+                <td className="px-4 py-3">
+                  <Badge tone={invitation.email_sent ? "green" : "neutral"}>
+                    {invitation.email_sent ? "Emailed" : "Link only"}
+                  </Badge>
                 </td>
                 <td className="px-4 py-3">
                   <button

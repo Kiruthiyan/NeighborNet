@@ -104,3 +104,4 @@ class InvitationResponse(BaseModel):
     status: str
     signup_url_path: str
     granted_capabilities: UserCapabilities
+    email_sent: bool = False

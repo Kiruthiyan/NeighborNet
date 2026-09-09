@@ -371,6 +371,7 @@ export interface Invitation {
   status: string;
   signup_url_path: string;
   granted_capabilities: UserCapabilities;
+  email_sent: boolean;
 }
 
 export function listUsers(): Promise<UserProfile[]> {

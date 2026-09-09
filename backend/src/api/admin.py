@@ -1,5 +1,7 @@
 """`/api/admin` - user management and invitations. Admin-only throughout."""
 
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from src.auth.dependencies import require_admin
@@ -10,14 +12,16 @@ from src.auth.schemas import (
     UserProfile,
     user_to_profile,
 )
+from src.config import get_settings
 from src.models.invitations import Invitation, InvitationStatus
 from src.models.users import User, UserCapabilities
 from src.services.coordination import get_coordination_service
+from src.services.email import is_email_configured, send_invitation_email
 
 router = APIRouter(dependencies=[Depends(require_admin)])
 
 
-def _to_invitation_response(invitation: Invitation) -> InvitationResponse:
+def _to_invitation_response(invitation: Invitation, email_sent: bool = False) -> InvitationResponse:
     return InvitationResponse(
         invite_id=invitation.invite_id,
         email=invitation.email,
@@ -25,6 +29,7 @@ def _to_invitation_response(invitation: Invitation) -> InvitationResponse:
         status=invitation.status.value,
         signup_url_path=f"/signup?invite={invitation.token}",
         granted_capabilities=invitation.granted_capabilities,
+        email_sent=email_sent,
     )
 
 
@@ -88,7 +93,18 @@ async def create_invitation(
         ),
     )
     service.create_invitation(invitation)
-    return _to_invitation_response(invitation)
+
+    email_sent = False
+    if is_email_configured():
+        signup_url = f"{get_settings().frontend_base_url}{invitation.signup_url_path}"
+        # SMTP is blocking - run off the event loop so one slow send doesn't
+        # stall other requests. Best-effort: a failed send still returns 201
+        # with the copyable link, it just reports email_sent=False.
+        email_sent = await asyncio.to_thread(
+            send_invitation_email, invitation.email, signup_url, admin.name
+        )
+
+    return _to_invitation_response(invitation, email_sent=email_sent)
 
 
 @router.get("/invitations", response_model=list[InvitationResponse])

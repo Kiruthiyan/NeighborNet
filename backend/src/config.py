@@ -85,6 +85,17 @@ class Settings(BaseSettings):
         alias="DEMO_DATA_RESET_ON_START"
     )
     
+    # Email (invitation delivery) Configuration - Gmail SMTP + App Password.
+    # Leave unset to skip sending: invitations still work, the admin panel
+    # just falls back to a copy/paste signup link. See docs/AUTH_PLAN.md.
+    smtp_host: str = Field(default="smtp.gmail.com", alias="SMTP_HOST")
+    smtp_port: int = Field(default=587, alias="SMTP_PORT")
+    smtp_username: Optional[str] = Field(default=None, alias="SMTP_USERNAME")
+    smtp_password: Optional[str] = Field(default=None, alias="SMTP_PASSWORD")
+    smtp_from_email: Optional[str] = Field(default=None, alias="SMTP_FROM_EMAIL")
+    smtp_from_name: str = Field(default="NeighborNet", alias="SMTP_FROM_NAME")
+    frontend_base_url: str = Field(default="http://localhost:3000", alias="FRONTEND_BASE_URL")
+
     # Notification Configuration
     sns_topic_arn: Optional[str] = Field(default=None, alias="SNS_TOPIC_ARN")
     sns_endpoint_url: Optional[str] = Field(default=None, alias="SNS_ENDPOINT_URL")
