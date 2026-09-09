@@ -51,6 +51,25 @@ def send_email(to_email: str, subject: str, body_text: str) -> bool:
         return False
 
 
+def send_otp_email(to_email: str, otp: str, purpose: str) -> bool:
+    """purpose is 'verify_email' or 'reset_password' - only the subject/body
+    wording differs."""
+
+    if purpose == "reset_password":
+        subject = "Your NeighborNet password reset code"
+        intro = "Use this code to reset your NeighborNet password:"
+    else:
+        subject = "Verify your NeighborNet email"
+        intro = "Use this code to verify your NeighborNet email address:"
+
+    body = (
+        f"{intro}\n\n"
+        f"    {otp}\n\n"
+        f"This code expires in 10 minutes. If you didn't request this, you can ignore this email."
+    )
+    return send_email(to_email, subject, body)
+
+
 def send_invitation_email(to_email: str, signup_url: str, inviter_name: str) -> bool:
     subject = "You're invited to NeighborNet"
     body = (

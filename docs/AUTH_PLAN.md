@@ -18,6 +18,14 @@ Why not a flat 5-role enum (admin/coordinator/volunteer/donor/recipient) like `d
 
 Email + password, backend-issued JWT (`python-jose` + `passlib`/`bcrypt`, already in `pyproject.toml`, previously unused). Frontend stores the token (localStorage, since frontend and backend are different origins) and sends it as `Authorization: Bearer <token>`.
 
+## Email verification & password reset
+
+Both OTP-based (6-digit code, 10-minute expiry, hashed like a password before storage - `User.otp_hash`/`otp_purpose`/`otp_expires_at`):
+
+- Signup emails a verification OTP automatically. `POST /api/auth/verify-email` confirms it. Verification is **soft** - an unverified account can still log in and use the app; the frontend just shows a "Verify your email" banner until they do. `POST /api/auth/resend-verification` gets a new code.
+- `POST /api/auth/forgot-password` emails a reset OTP (same generic response whether or not the email is registered, to avoid leaking which accounts exist). `POST /api/auth/reset-password` consumes it and sets a new password.
+- When SMTP isn't configured (see below), these endpoints return the OTP directly in the response body (`dev_otp`) instead of emailing it, so the flow is still fully testable locally/in CI. Seeded demo accounts are created with `email_verified=True` since they never go through signup.
+
 ## Admin capabilities
 
 - List/edit/delete any user; grant or revoke `is_coordinator`; activate/deactivate accounts.

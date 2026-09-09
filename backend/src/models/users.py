@@ -13,6 +13,7 @@ Account model: two tiers plus independent capability flags.
   self-toggle like the other two. See docs/AUTH_PLAN.md.
 """
 
+from datetime import datetime
 from enum import Enum
 from typing import Dict, Any, Optional
 from pydantic import Field
@@ -52,6 +53,14 @@ class User(TimestampedModel):
 
     # Authentication
     password_hash: Optional[str] = None
+
+    # Email verification / password reset - a one-time code, hashed like a
+    # password, with a purpose and expiry. Only one OTP is live at a time;
+    # issuing a new one overwrites it. See src/auth/router.py.
+    email_verified: bool = False
+    otp_hash: Optional[str] = None
+    otp_purpose: Optional[str] = None  # "verify_email" | "reset_password"
+    otp_expires_at: Optional[datetime] = None
 
     # Authorization
     is_active: bool = True

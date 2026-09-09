@@ -21,6 +21,7 @@ Planned API routers are commented in `backend/src/main.py` and should be impleme
 ## Auth & Admin (implemented — see docs/AUTH_PLAN.md)
 
 - `POST /api/auth/signup`, `POST /api/auth/login`, `GET /api/auth/me`, `PATCH /api/auth/me/capabilities`
+- `POST /api/auth/verify-email`, `POST /api/auth/resend-verification`, `POST /api/auth/forgot-password`, `POST /api/auth/reset-password` (all OTP-based, see docs/AUTH_PLAN.md)
 - `GET/PATCH/DELETE /api/admin/users(/{id})`, `POST /api/admin/invitations`, `GET /api/admin/invitations`, `POST /api/admin/invitations/{id}/revoke`
 
 Coordinator-gated (require a coordinator or admin bearer token): `POST /api/decisions/{id}/approve`, `POST /api/decisions/{id}/reject`, `POST /api/disasters`, `POST /api/disasters/{id}/dispatch`, `POST /api/disasters/{id}/assign`.

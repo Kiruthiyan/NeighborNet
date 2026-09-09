@@ -5,6 +5,7 @@ pyproject.toml, and the JWT settings already defined in src/config.py
 (api_secret_key, api_algorithm, api_access_token_expire_minutes).
 """
 
+import secrets
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 
@@ -14,6 +15,21 @@ from passlib.context import CryptContext
 from src.config import get_settings
 
 _pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+OTP_TTL_MINUTES = 10
+
+
+def generate_otp() -> str:
+    """A 6-digit numeric one-time code, e.g. for email verification or
+    password reset. Hashed the same way as a password before storage - see
+    hash_password/verify_password below."""
+    return f"{secrets.randbelow(1_000_000):06d}"
+
+
+def otp_expiry() -> datetime:
+    # Matches datetime.now() used elsewhere in the models (e.g. Invitation.expires_at) -
+    # naive local time throughout, not UTC, so comparisons stay consistent.
+    return datetime.now() + timedelta(minutes=OTP_TTL_MINUTES)
 
 
 def hash_password(plain_password: str) -> str:

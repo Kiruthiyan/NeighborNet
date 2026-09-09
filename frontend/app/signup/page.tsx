@@ -23,8 +23,10 @@ function SignupForm() {
     setBusy(true);
     setError(null);
     try {
-      await signup(name, email, password, inviteToken);
-      router.push("/");
+      const devOtp = await signup(name, email, password, inviteToken);
+      const params = new URLSearchParams({ email });
+      if (devOtp) params.set("dev_otp", devOtp);
+      router.push(`/verify-email?${params.toString()}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Signup failed");
     } finally {

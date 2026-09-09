@@ -1,6 +1,6 @@
 "use client";
 
-import { LogOut, Radio, ShieldCheck } from "lucide-react";
+import { LogOut, MailWarning, Radio, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
@@ -149,6 +149,18 @@ export function AppShell({
         </aside>
 
         <section className="px-4 py-5 sm:px-6 lg:px-8">
+          {!user.email_verified && (
+            <div className="mb-5 flex flex-wrap items-center gap-2 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              <MailWarning size={16} />
+              <span>Verify your email to secure your account.</span>
+              <Link
+                className="ml-auto font-medium underline"
+                href={`/verify-email?email=${encodeURIComponent(user.email ?? "")}`}
+              >
+                Verify now
+              </Link>
+            </div>
+          )}
           <header className="mb-5 border-b border-slate-200 pb-5">
             <h1 className="text-2xl font-semibold tracking-normal">{title}</h1>
             {description && (

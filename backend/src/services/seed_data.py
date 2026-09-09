@@ -75,6 +75,7 @@ class SeedDataGenerator:
             email="admin@neighbornet.org",
             phone="555-0100",
             password_hash=demo_password_hash,
+            email_verified=True,
         ))
 
         # Coordinators (granted the capability directly since they're seed
@@ -86,6 +87,7 @@ class SeedDataGenerator:
                 phone="555-0101",
                 capabilities=UserCapabilities(is_coordinator=True),
                 password_hash=demo_password_hash,
+                email_verified=True,
                 permissions={"approve_allocations": True, "manage_volunteers": True}
             ),
             User(
@@ -94,6 +96,7 @@ class SeedDataGenerator:
                 phone="555-0102",
                 capabilities=UserCapabilities(is_coordinator=True),
                 password_hash=demo_password_hash,
+                email_verified=True,
                 permissions={"approve_allocations": True, "emergency_override": True}
             )
         ])
@@ -115,6 +118,7 @@ class SeedDataGenerator:
                 phone=f"555-{random.randint(1000, 9999)}",
                 capabilities=UserCapabilities(is_volunteer=True),
                 password_hash=demo_password_hash,
+                email_verified=True,
             ))
 
         # Donor organization contacts
@@ -131,6 +135,7 @@ class SeedDataGenerator:
                 phone=f"555-{random.randint(2000, 2999)}",
                 capabilities=UserCapabilities(is_donor=True),
                 password_hash=demo_password_hash,
+                email_verified=True,
             ))
     
     def _generate_organizations(self) -> None:

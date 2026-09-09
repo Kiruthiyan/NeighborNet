@@ -46,6 +46,7 @@ class UserProfile(BaseModel):
     is_donor: bool
     is_volunteer: bool
     is_active: bool
+    email_verified: bool
 
 
 def user_to_profile(user: User) -> UserProfile:
@@ -60,6 +61,7 @@ def user_to_profile(user: User) -> UserProfile:
         is_donor=user.is_donor,
         is_volunteer=user.is_volunteer,
         is_active=user.is_active,
+        email_verified=user.email_verified,
     )
 
 
@@ -67,6 +69,45 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: UserProfile
+    # Only populated when email delivery isn't configured (see
+    # src/services/email.py) - dev/demo fallback so signup verification is
+    # still testable without real SMTP, mirroring InvitationResponse below.
+    dev_otp: Optional[str] = None
+
+
+class EmailOnlyRequest(BaseModel):
+    email: str
+
+    @field_validator("email")
+    @classmethod
+    def _validate_email(cls, value: str) -> str:
+        return normalize_email(value)
+
+
+class VerifyEmailRequest(BaseModel):
+    email: str
+    otp: str
+
+    @field_validator("email")
+    @classmethod
+    def _validate_email(cls, value: str) -> str:
+        return normalize_email(value)
+
+
+class ForgotPasswordResponse(BaseModel):
+    message: str
+    dev_otp: Optional[str] = None
+
+
+class ResetPasswordRequest(BaseModel):
+    email: str
+    otp: str
+    new_password: str = Field(min_length=8)
+
+    @field_validator("email")
+    @classmethod
+    def _validate_email(cls, value: str) -> str:
+        return normalize_email(value)
 
 
 class CapabilitiesUpdateRequest(BaseModel):

@@ -143,6 +143,103 @@ class TestAdminUserManagement:
         assert all(u["user_id"] != user_id for u in users)
 
 
+class TestEmailVerification:
+    def test_signup_returns_dev_otp_when_email_not_configured(self, client):
+        response = _signup(client, "needs-verification@example.com")
+        assert response.status_code == 201
+        body = response.json()
+        assert body["user"]["email_verified"] is False
+        assert body["dev_otp"] is not None
+        assert len(body["dev_otp"]) == 6
+
+    def test_verify_email_with_correct_otp_marks_verified(self, client):
+        signup = _signup(client, "verifyme@example.com")
+        otp = signup.json()["dev_otp"]
+
+        response = client.post(
+            "/api/auth/verify-email", json={"email": "verifyme@example.com", "otp": otp}
+        )
+        assert response.status_code == 200
+        assert response.json()["email_verified"] is True
+
+    def test_verify_email_with_wrong_otp_rejected(self, client):
+        _signup(client, "wrongotp@example.com")
+        response = client.post(
+            "/api/auth/verify-email", json={"email": "wrongotp@example.com", "otp": "000000"}
+        )
+        assert response.status_code == 400
+
+    def test_otp_cannot_be_reused(self, client):
+        signup = _signup(client, "reuseotp@example.com")
+        otp = signup.json()["dev_otp"]
+
+        first = client.post(
+            "/api/auth/verify-email", json={"email": "reuseotp@example.com", "otp": otp}
+        )
+        assert first.status_code == 200
+
+        second = client.post(
+            "/api/auth/verify-email", json={"email": "reuseotp@example.com", "otp": otp}
+        )
+        assert second.status_code == 400
+
+
+class TestPasswordReset:
+    def test_forgot_password_returns_dev_otp_for_known_email(self, client):
+        _signup(client, "resetme@example.com", password="original-password")
+        response = client.post(
+            "/api/auth/forgot-password", json={"email": "resetme@example.com"}
+        )
+        assert response.status_code == 200
+        assert response.json()["dev_otp"] is not None
+
+    def test_forgot_password_same_response_for_unknown_email(self, client):
+        known = client.post(
+            "/api/auth/forgot-password", json={"email": "resetme2@example.com"}
+        )
+        unknown = client.post(
+            "/api/auth/forgot-password", json={"email": "does-not-exist@example.com"}
+        )
+        assert known.status_code == 200
+        assert unknown.status_code == 200
+        assert known.json()["message"] == unknown.json()["message"]
+        assert unknown.json()["dev_otp"] is None
+
+    def test_reset_password_with_otp_then_login_with_new_password(self, client):
+        _signup(client, "changeme@example.com", password="original-password")
+        forgot = client.post(
+            "/api/auth/forgot-password", json={"email": "changeme@example.com"}
+        )
+        otp = forgot.json()["dev_otp"]
+
+        reset = client.post(
+            "/api/auth/reset-password",
+            json={"email": "changeme@example.com", "otp": otp, "new_password": "brand-new-password"},
+        )
+        assert reset.status_code == 200
+
+        old_login = client.post(
+            "/api/auth/login",
+            json={"email": "changeme@example.com", "password": "original-password"},
+        )
+        assert old_login.status_code == 401
+
+        new_login = client.post(
+            "/api/auth/login",
+            json={"email": "changeme@example.com", "password": "brand-new-password"},
+        )
+        assert new_login.status_code == 200
+
+    def test_reset_password_wrong_otp_rejected(self, client):
+        _signup(client, "badreset@example.com")
+        client.post("/api/auth/forgot-password", json={"email": "badreset@example.com"})
+        response = client.post(
+            "/api/auth/reset-password",
+            json={"email": "badreset@example.com", "otp": "000000", "new_password": "whatever123"},
+        )
+        assert response.status_code == 400
+
+
 class TestInvitations:
     def test_admin_can_invite_and_invitee_signs_up_with_granted_capability(self, client):
         admin_token = _login_as_admin(client)

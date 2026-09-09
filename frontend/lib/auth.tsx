@@ -15,7 +15,14 @@ interface AuthContextValue {
   user: UserProfile | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  signup: (name: string, email: string, password: string, inviteToken?: string) => Promise<void>;
+  /** Returns the dev-only OTP when email delivery isn't configured (null
+   * once real SMTP is set up, since it's actually emailed then). */
+  signup: (
+    name: string,
+    email: string,
+    password: string,
+    inviteToken?: string
+  ) => Promise<string | null>;
   logout: () => void;
   setUser: (user: UserProfile) => void;
 }
@@ -60,6 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const result = await apiSignup(name, email, password, inviteToken);
       setStoredToken(result.access_token);
       setUser(result.user);
+      return result.dev_otp;
     },
     []
   );

@@ -323,12 +323,17 @@ export interface UserProfile {
   is_donor: boolean;
   is_volunteer: boolean;
   is_active: boolean;
+  email_verified: boolean;
 }
 
 export interface AuthResult {
   access_token: string;
   token_type: string;
   user: UserProfile;
+  /** Only present when the backend has no SMTP configured - lets the OTP
+   * flow be exercised/demoed without real email delivery. See
+   * docs/AUTH_PLAN.md and src/auth/router.py's _dev_otp helper. */
+  dev_otp: string | null;
 }
 
 export function login(email: string, password: string): Promise<AuthResult> {
@@ -352,6 +357,43 @@ export function signup(
 
 export function getMe(): Promise<UserProfile> {
   return request<UserProfile>("/auth/me");
+}
+
+export interface OtpMessageResult {
+  message: string;
+  dev_otp: string | null;
+}
+
+export function verifyEmail(email: string, otp: string): Promise<UserProfile> {
+  return request<UserProfile>("/auth/verify-email", {
+    method: "POST",
+    body: JSON.stringify({ email, otp })
+  });
+}
+
+export function resendVerification(email: string): Promise<OtpMessageResult> {
+  return request<OtpMessageResult>("/auth/resend-verification", {
+    method: "POST",
+    body: JSON.stringify({ email })
+  });
+}
+
+export function forgotPassword(email: string): Promise<OtpMessageResult> {
+  return request<OtpMessageResult>("/auth/forgot-password", {
+    method: "POST",
+    body: JSON.stringify({ email })
+  });
+}
+
+export function resetPassword(
+  email: string,
+  otp: string,
+  newPassword: string
+): Promise<UserProfile> {
+  return request<UserProfile>("/auth/reset-password", {
+    method: "POST",
+    body: JSON.stringify({ email, otp, new_password: newPassword })
+  });
 }
 
 export function updateMyCapabilities(payload: {

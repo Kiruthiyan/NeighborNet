@@ -21,6 +21,15 @@ os.environ["STRANDS_MODEL_PROVIDER"] = "mock"
 # (slow, and would pollute the shared team DynamoDB tables with test data).
 os.environ["PERSIST_TO_DYNAMODB"] = "false"
 
+# Same reasoning for email: a developer's local backend/.env may have real
+# Gmail SMTP credentials configured (see docs/AUTH_PLAN.md). Without this,
+# the suite would send real emails over the network on every signup/invite
+# test - slow, and noisy for whoever's inbox it is. Clearing these also makes
+# is_email_configured() reliably False, so tests can assert on the dev_otp /
+# signup_url_path fallback fields.
+os.environ["SMTP_USERNAME"] = ""
+os.environ["SMTP_PASSWORD"] = ""
+
 
 @pytest.fixture(scope="session")
 def event_loop():

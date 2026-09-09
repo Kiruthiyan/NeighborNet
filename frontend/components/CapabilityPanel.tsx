@@ -30,7 +30,7 @@ function ToggleRow({
       </div>
       <button
         aria-pressed={enabled}
-        className={`relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-50 ${
+        className={`inline-flex h-6 w-11 shrink-0 items-center rounded-full p-0.5 transition-colors disabled:opacity-50 ${
           enabled ? "bg-leaf" : "bg-slate-300"
         }`}
         disabled={busy}
@@ -38,8 +38,8 @@ function ToggleRow({
         type="button"
       >
         <span
-          className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${
-            enabled ? "translate-x-5" : "translate-x-0.5"
+          className={`h-5 w-5 rounded-full bg-white shadow transition-transform ${
+            enabled ? "translate-x-5" : "translate-x-0"
           }`}
         />
       </button>

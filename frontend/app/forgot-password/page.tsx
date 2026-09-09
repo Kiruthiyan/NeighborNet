@@ -3,14 +3,12 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
-import { Radio } from "lucide-react";
-import { useAuth } from "../../lib/auth";
+import { KeyRound } from "lucide-react";
+import { forgotPassword } from "../../lib/api";
 
-export default function LoginPage() {
-  const { login } = useAuth();
+export default function ForgotPasswordPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -19,10 +17,12 @@ export default function LoginPage() {
     setBusy(true);
     setError(null);
     try {
-      await login(email, password);
-      router.push("/");
+      const result = await forgotPassword(email);
+      const params = new URLSearchParams({ email });
+      if (result.dev_otp) params.set("dev_otp", result.dev_otp);
+      router.push(`/reset-password?${params.toString()}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
+      setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
       setBusy(false);
     }
@@ -33,11 +33,11 @@ export default function LoginPage() {
       <div className="w-full max-w-sm rounded border border-slate-200 bg-white p-6">
         <div className="mb-6 flex items-center gap-3">
           <div className="grid h-10 w-10 place-items-center rounded bg-leaf text-white">
-            <Radio size={21} />
+            <KeyRound size={21} />
           </div>
           <div>
-            <div className="text-sm font-semibold">NeighborNet</div>
-            <div className="text-xs text-slate-500">Sign in</div>
+            <div className="text-sm font-semibold">Forgot password</div>
+            <div className="text-xs text-slate-500">We&apos;ll email you a reset code</div>
           </div>
         </div>
 
@@ -53,22 +53,6 @@ export default function LoginPage() {
               value={email}
             />
           </label>
-          <label className="grid gap-1 text-sm">
-            <div className="flex items-center justify-between">
-              <span className="text-slate-600">Password</span>
-              <Link className="text-xs font-medium text-leaf" href="/forgot-password">
-                Forgot password?
-              </Link>
-            </div>
-            <input
-              autoComplete="current-password"
-              className="rounded border border-slate-300 px-3 py-2 text-sm outline-none focus:border-leaf"
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              type="password"
-              value={password}
-            />
-          </label>
 
           {error && <p className="text-sm text-danger">{error}</p>}
 
@@ -77,14 +61,13 @@ export default function LoginPage() {
             disabled={busy}
             type="submit"
           >
-            {busy ? "Signing in…" : "Sign in"}
+            {busy ? "Sending…" : "Send reset code"}
           </button>
         </form>
 
         <p className="mt-4 text-center text-sm text-slate-500">
-          New here?{" "}
-          <Link className="font-medium text-leaf" href="/signup">
-            Create an account
+          <Link className="font-medium text-leaf" href="/login">
+            Back to sign in
           </Link>
         </p>
       </div>
