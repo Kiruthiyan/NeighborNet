@@ -66,6 +66,7 @@ class DatabaseService:
             self._get_disaster_events_table_definition(),
             self._get_volunteer_alerts_table_definition(),
             self._get_tasks_table_definition(),
+            self._get_invitations_table_definition(),
         ]
         
         for table_def in tables_to_create:
@@ -313,6 +314,19 @@ class DatabaseService:
                     ],
                     "Projection": {"ProjectionType": "ALL"}
                 }
+            ],
+            "BillingMode": "PAY_PER_REQUEST"
+        }
+
+    def _get_invitations_table_definition(self) -> Dict[str, Any]:
+        """Get Invitations table definition."""
+        return {
+            "TableName": "Invitations",
+            "KeySchema": [
+                {"AttributeName": "invite_id", "KeyType": "HASH"}
+            ],
+            "AttributeDefinitions": [
+                {"AttributeName": "invite_id", "AttributeType": "S"}
             ],
             "BillingMode": "PAY_PER_REQUEST"
         }

@@ -21,6 +21,7 @@ Safety is enforced structurally, not by trusting the model:
 
 from __future__ import annotations
 
+import re
 from typing import Optional
 
 import boto3
@@ -86,10 +87,21 @@ def build_agent(model_id: Optional[str] = None) -> Agent:
     )
 
 
+_THINKING_TAG_RE = re.compile(r"<thinking>.*?</thinking>", re.DOTALL | re.IGNORECASE)
+
+
+def _strip_thinking(text: str) -> str:
+    """Nova Pro sometimes narrates its own reasoning in <thinking> tags before
+    the actual answer - strip those so the coordinator only sees the final
+    summary, matching the system prompt's 'be concise' instruction."""
+
+    return _THINKING_TAG_RE.sub("", text).strip()
+
+
 def run_instruction(instruction: str, model_id: Optional[str] = None) -> str:
     """Run one coordinator instruction through the Strands agent and return
     its final natural-language response."""
 
     agent = build_agent(model_id=model_id)
     result = agent(instruction)
-    return str(result)
+    return _strip_thinking(str(result))

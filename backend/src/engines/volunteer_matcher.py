@@ -65,12 +65,13 @@ class VolunteerMatcher:
                 score += 10
                 reasons.append("Task in preferred service area")
 
-        if volunteer.current_task_count == 0:
-            score += 15
-            reasons.append("No current task load")
-        else:
-            score += max(0, 10 - volunteer.current_task_count * 3)
-            reasons.append("Workload considered")
+        if volunteer.current_task_count >= 1:
+            # Hard capacity cap: one active task at a time. Without this,
+            # nothing stops the same volunteer being matched to unlimited
+            # concurrent tasks across separate planning/assignment calls.
+            return VolunteerMatch(volunteer, 0.0, ["Already assigned to an active task"])
+        score += 15
+        reasons.append("No current task load")
 
         if task.route_safe and task.route_status == "open":
             score += 15

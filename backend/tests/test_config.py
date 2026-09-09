@@ -13,9 +13,14 @@ class TestSettings:
     
     def test_default_settings(self):
         """Test default settings are loaded correctly."""
-        # Temporarily unset test environment variables
-        with patch.dict(os.environ, {}, clear=True):
-            settings = Settings()
+        # Temporarily unset test environment variables. API_SECRET_KEY still
+        # has to be supplied - Settings() now fails fast without one.
+        with patch.dict(
+            os.environ,
+            {"API_SECRET_KEY": "test-only-secret-not-for-any-real-deployment-0123456789"},
+            clear=True,
+        ):
+            settings = Settings(_env_file=None)
             
             assert settings.environment == "development"
             assert settings.debug is True

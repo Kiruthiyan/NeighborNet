@@ -8,8 +8,24 @@ from pathlib import Path
 from typing import Optional
 
 from botocore.config import Config as BotoClientConfig
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Placeholder values that must never be used as the real signing secret -
+# anyone who has read this source file (i.e. everyone) knows these strings,
+# so a deployment running with one of them is equivalent to having no secret
+# at all: any JWT can be forged for any user, including admins.
+_INSECURE_SECRET_KEYS = {
+    "dev-secret-key-change-in-production",
+    "your-secret-key-change-in-production",
+    "changeme",
+    "change-me",
+    "secret",
+    "secretkey",
+    "password",
+    "insecure",
+    "",
+}
 
 
 class Settings(BaseSettings):
@@ -65,10 +81,7 @@ class Settings(BaseSettings):
     # API Configuration
     api_host: str = Field(default="0.0.0.0", alias="API_HOST")
     api_port: int = Field(default=8000, alias="API_PORT")
-    api_secret_key: str = Field(
-        default="dev-secret-key-change-in-production", 
-        alias="API_SECRET_KEY"
-    )
+    api_secret_key: Optional[str] = Field(default=None, alias="API_SECRET_KEY")
     api_algorithm: str = Field(default="HS256", alias="API_ALGORITHM")
     api_access_token_expire_minutes: int = Field(
         default=30, 
@@ -86,6 +99,17 @@ class Settings(BaseSettings):
         alias="DEMO_DATA_RESET_ON_START"
     )
     
+    # Email (invitation delivery) Configuration - Gmail SMTP + App Password.
+    # Leave unset to skip sending: invitations still work, the admin panel
+    # just falls back to a copy/paste signup link. See docs/AUTH_PLAN.md.
+    smtp_host: str = Field(default="smtp.gmail.com", alias="SMTP_HOST")
+    smtp_port: int = Field(default=587, alias="SMTP_PORT")
+    smtp_username: Optional[str] = Field(default=None, alias="SMTP_USERNAME")
+    smtp_password: Optional[str] = Field(default=None, alias="SMTP_PASSWORD")
+    smtp_from_email: Optional[str] = Field(default=None, alias="SMTP_FROM_EMAIL")
+    smtp_from_name: str = Field(default="NeighborNet", alias="SMTP_FROM_NAME")
+    frontend_base_url: str = Field(default="http://localhost:3000", alias="FRONTEND_BASE_URL")
+
     # Notification Configuration
     sns_topic_arn: Optional[str] = Field(default=None, alias="SNS_TOPIC_ARN")
     sns_endpoint_url: Optional[str] = Field(default=None, alias="SNS_ENDPOINT_URL")
@@ -133,6 +157,22 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             return [item.strip() for item in value.split(",") if item.strip()]
         return value
+
+    @model_validator(mode="after")
+    def _validate_secret_key(self) -> "Settings":
+        """Fail fast at startup rather than silently running with a forgeable
+        JWT secret. A missing/placeholder/weak key means anyone can mint a
+        valid access token for any user, including admins."""
+
+        key = (self.api_secret_key or "").strip()
+        if not key or key.lower() in _INSECURE_SECRET_KEYS or len(key) < 32:
+            raise RuntimeError(
+                "API_SECRET_KEY is missing, a known placeholder, or shorter than 32 "
+                "characters. Set a real random secret in the environment before "
+                "starting the server, e.g.: "
+                'python -c "import secrets; print(secrets.token_urlsafe(48))"'
+            )
+        return self
 
     @field_validator(
         "debug", "demo_mode", "demo_data_reset_on_start", "persist_to_dynamodb", mode="before"

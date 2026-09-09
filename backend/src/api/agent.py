@@ -8,10 +8,12 @@ deterministic engines and risk gating — see src/agents/strands_tools.py.
 """
 
 import structlog
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-router = APIRouter()
+from src.auth.dependencies import require_coordinator
+
+router = APIRouter(dependencies=[Depends(require_coordinator)])
 logger = structlog.get_logger(__name__)
 
 

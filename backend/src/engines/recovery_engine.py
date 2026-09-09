@@ -26,6 +26,7 @@ class RecoveryEngine:
         affected_ids = {task.task_id for task in affected}
         preserved = []
         repaired = []
+        superseded = []
 
         for task in task_list:
             if task.task_id not in affected_ids:
@@ -52,9 +53,18 @@ class RecoveryEngine:
 
             repaired.append(self.planning.assign_best_volunteer(replacement, available))
 
+            # NOTE: deliberately does NOT mutate `task` here. This is a
+            # planning step - the caller (CoordinationService.recover) may
+            # stage this behind a pending AMBER Decision rather than apply
+            # it immediately, so the original task must stay untouched
+            # (still ASSIGNED, not SUPERSEDED) until the plan is actually
+            # applied. See CoordinationService._apply_recovery_plan.
+            superseded.append(task)
+
         return {
             "preserved": preserved,
             "repaired": repaired,
+            "superseded": superseded,
             "affected_count": len(affected),
             "preserved_count": len(preserved),
             "repaired_count": len(repaired),

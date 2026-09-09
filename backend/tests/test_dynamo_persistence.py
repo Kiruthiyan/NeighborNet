@@ -33,6 +33,10 @@ class FakeDynamoStore:
             "VolunteerAlerts": "alert_id",
             "Tasks": "task_id",
             "Decisions": "decision_id",
+            "Inventory": "batch_id",
+            "Requests": "request_id",
+            "Allocations": "allocation_id",
+            "StrandsAuditLogs": "log_id",
         }
 
     def put(self, table_name: str, item_dict: Dict[str, Any]) -> None:

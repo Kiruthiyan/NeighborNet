@@ -10,6 +10,39 @@
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "http://localhost:8000/api";
 
+const TOKEN_STORAGE_KEY = "neighbornet_token";
+
+/** Read the signed-in user's JWT from localStorage. Browser-only: on the
+ * server (page fetches during SSR) this always returns null, which is fine
+ * since only client-triggered mutations need the token (see actions.tsx). */
+export function getStoredToken(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(TOKEN_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setStoredToken(token: string | null): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (token) {
+      window.localStorage.setItem(TOKEN_STORAGE_KEY, token);
+    } else {
+      window.localStorage.removeItem(TOKEN_STORAGE_KEY);
+    }
+  } catch {
+    // localStorage unavailable (private mode, disabled storage, etc.) -
+    // auth simply won't persist across reloads.
+  }
+}
+
+function authHeaders(): Record<string, string> {
+  const token = getStoredToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 export interface DashboardMetrics {
   users: number;
   inventory: number;
@@ -207,6 +240,7 @@ export function createDisaster(payload: Record<string, unknown>) {
 async function apiGet<T>(path: string, fallback: T): Promise<T> {
   try {
     const response = await fetch(`${API_BASE_URL}${path}`, {
+      headers: authHeaders(),
       cache: "no-store"
     });
     if (!response.ok) {
@@ -222,7 +256,7 @@ async function apiGet<T>(path: string, fallback: T): Promise<T> {
 async function apiPost<T>(path: string, body?: unknown, fallback?: T): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: body ? JSON.stringify(body) : undefined,
     cache: "no-store"
   });
@@ -236,7 +270,7 @@ async function apiPost<T>(path: string, body?: unknown, fallback?: T): Promise<T
 async function apiPatch<T>(path: string, body: unknown, fallback?: T): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(body),
     cache: "no-store"
   });
@@ -245,6 +279,185 @@ async function apiPatch<T>(path: string, body: unknown, fallback?: T): Promise<T
     throw new Error(`PATCH ${path} failed: ${response.status}`);
   }
   return (await response.json()) as T;
+}
+
+/** Strict request helper for auth/admin calls: unlike apiGet/apiPost above
+ * (which degrade quietly for public dashboard reads), these must surface
+ * errors - a failed login or a 403 from an admin-only route needs to reach
+ * the caller, not disappear into a fallback value. */
+async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(),
+      ...(options.headers as Record<string, string> | undefined)
+    },
+    cache: "no-store"
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const detail =
+      (payload && typeof payload.error === "string" && payload.error) ||
+      (payload && typeof payload.detail === "string" && payload.detail) ||
+      `Request failed: ${response.status}`;
+    throw new Error(detail);
+  }
+  return payload as T;
+}
+
+export interface UserCapabilities {
+  is_donor: boolean;
+  is_volunteer: boolean;
+  is_coordinator: boolean;
+}
+
+export interface UserProfile {
+  user_id: string;
+  name: string;
+  email: string | null;
+  account_type: "admin" | "user";
+  capabilities: UserCapabilities;
+  is_admin: boolean;
+  is_coordinator: boolean;
+  is_donor: boolean;
+  is_volunteer: boolean;
+  is_active: boolean;
+  email_verified: boolean;
+}
+
+export interface AuthResult {
+  access_token: string;
+  token_type: string;
+  user: UserProfile;
+  /** Only present when the backend has no SMTP configured - lets the OTP
+   * flow be exercised/demoed without real email delivery. See
+   * docs/AUTH_PLAN.md and src/auth/router.py's _dev_otp helper. */
+  dev_otp: string | null;
+}
+
+export function login(email: string, password: string): Promise<AuthResult> {
+  return request<AuthResult>("/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ email, password })
+  });
+}
+
+export function signup(
+  name: string,
+  email: string,
+  password: string,
+  inviteToken?: string
+): Promise<AuthResult> {
+  return request<AuthResult>("/auth/signup", {
+    method: "POST",
+    body: JSON.stringify({ name, email, password, invite_token: inviteToken || undefined })
+  });
+}
+
+export function getMe(): Promise<UserProfile> {
+  return request<UserProfile>("/auth/me");
+}
+
+export interface OtpMessageResult {
+  message: string;
+  dev_otp: string | null;
+}
+
+export function verifyEmail(email: string, otp: string): Promise<UserProfile> {
+  return request<UserProfile>("/auth/verify-email", {
+    method: "POST",
+    body: JSON.stringify({ email, otp })
+  });
+}
+
+export function resendVerification(email: string): Promise<OtpMessageResult> {
+  return request<OtpMessageResult>("/auth/resend-verification", {
+    method: "POST",
+    body: JSON.stringify({ email })
+  });
+}
+
+export function forgotPassword(email: string): Promise<OtpMessageResult> {
+  return request<OtpMessageResult>("/auth/forgot-password", {
+    method: "POST",
+    body: JSON.stringify({ email })
+  });
+}
+
+export function resetPassword(
+  email: string,
+  otp: string,
+  newPassword: string
+): Promise<UserProfile> {
+  return request<UserProfile>("/auth/reset-password", {
+    method: "POST",
+    body: JSON.stringify({ email, otp, new_password: newPassword })
+  });
+}
+
+export function updateMyCapabilities(payload: {
+  is_donor?: boolean;
+  is_volunteer?: boolean;
+}): Promise<UserProfile> {
+  return request<UserProfile>("/auth/me/capabilities", {
+    method: "PATCH",
+    body: JSON.stringify(payload)
+  });
+}
+
+export interface Invitation {
+  invite_id: string;
+  email: string;
+  token: string;
+  status: string;
+  signup_url_path: string;
+  granted_capabilities: UserCapabilities;
+  email_sent: boolean;
+}
+
+export function listUsers(): Promise<UserProfile[]> {
+  return request<UserProfile[]>("/admin/users");
+}
+
+export function updateUser(
+  userId: string,
+  payload: Partial<{
+    name: string;
+    is_active: boolean;
+    is_coordinator: boolean;
+    is_donor: boolean;
+    is_volunteer: boolean;
+  }>
+): Promise<UserProfile> {
+  return request<UserProfile>(`/admin/users/${userId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function deleteUser(userId: string): Promise<void> {
+  await request<null>(`/admin/users/${userId}`, { method: "DELETE" });
+}
+
+export function listInvitations(): Promise<Invitation[]> {
+  return request<Invitation[]>("/admin/invitations");
+}
+
+export function createInvitation(payload: {
+  email: string;
+  grant_coordinator?: boolean;
+  grant_donor?: boolean;
+  grant_volunteer?: boolean;
+}): Promise<Invitation> {
+  return request<Invitation>("/admin/invitations", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function revokeInvitation(inviteId: string): Promise<Invitation> {
+  return request<Invitation>(`/admin/invitations/${inviteId}/revoke`, { method: "POST" });
 }
 
 export function getDashboardMetrics() {
@@ -327,18 +540,13 @@ export interface AgentInstructionResult {
   response: string;
 }
 
-export async function instructAgent(instruction: string): Promise<AgentInstructionResult> {
-  const response = await fetch(`${API_BASE_URL}/agent/instruct`, {
+export function instructAgent(instruction: string): Promise<AgentInstructionResult> {
+  // Coordinator-gated on the backend (see require_coordinator on
+  // /api/agent router) - uses the strict `request` helper so the auth
+  // token is attached and a 403 surfaces as a real error instead of
+  // silently degrading.
+  return request<AgentInstructionResult>("/agent/instruct", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ instruction }),
-    cache: "no-store"
+    body: JSON.stringify({ instruction })
   });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const detail =
-      typeof payload?.error === "string" ? payload.error : `Agent call failed: ${response.status}`;
-    throw new Error(detail);
-  }
-  return payload as AgentInstructionResult;
 }

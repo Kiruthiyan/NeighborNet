@@ -13,6 +13,14 @@ os.environ["NODE_ENV"] = "test"
 os.environ["DEBUG"] = "true"
 os.environ["STRANDS_MODEL_PROVIDER"] = "mock"
 
+# Settings() now fails fast if API_SECRET_KEY is missing/weak/a known
+# placeholder (see src/config.py). Tests need *some* valid-shaped secret;
+# this is obviously not a real deployment secret and is only ever used
+# in-process against the in-memory test store.
+os.environ.setdefault(
+    "API_SECRET_KEY", "test-suite-only-secret-not-for-any-real-deployment-0123456789"
+)
+
 # Always run the suite fully in-memory, even if a developer's local
 # backend/.env has PERSIST_TO_DYNAMODB=true set for running the real app.
 # Actual environment variables take priority over .env file values in
@@ -20,6 +28,15 @@ os.environ["STRANDS_MODEL_PROVIDER"] = "mock"
 # would silently hit real AWS over the network on every reset() call
 # (slow, and would pollute the shared team DynamoDB tables with test data).
 os.environ["PERSIST_TO_DYNAMODB"] = "false"
+
+# Same reasoning for email: a developer's local backend/.env may have real
+# Gmail SMTP credentials configured (see docs/AUTH_PLAN.md). Without this,
+# the suite would send real emails over the network on every signup/invite
+# test - slow, and noisy for whoever's inbox it is. Clearing these also makes
+# is_email_configured() reliably False, so tests can assert on the dev_otp /
+# signup_url_path fallback fields.
+os.environ["SMTP_USERNAME"] = ""
+os.environ["SMTP_PASSWORD"] = ""
 
 
 @pytest.fixture(scope="session")
@@ -41,7 +58,7 @@ def mock_settings():
         strands_model_provider="mock",
         database_url="dynamodb://localhost:8001",
         dynamodb_endpoint_url="http://localhost:8001",
-        api_secret_key="test-secret-key",
+        api_secret_key="test-suite-only-secret-not-for-any-real-deployment-0123456789",
         demo_mode=True,
     )
 

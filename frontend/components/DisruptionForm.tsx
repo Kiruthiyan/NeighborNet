@@ -104,11 +104,19 @@ export function DisruptionForm({ tasks }: { tasks: CoordinationTask[] }) {
       {result && (
         <div className="mt-4 rounded border border-slate-200 bg-slate-50 p-3 text-xs">
           <div>Preserved: {String(result.preserved_count ?? 0)}</div>
-          <div>Repaired: {String(result.repaired_count ?? 0)}</div>
-          <div>Affected: {String(result.affected_count ?? 0)}</div>
-          <div className="mt-1 text-slate-500">
-            Check the Decisions page — a pending AMBER decision may be waiting for approval.
+          <div>
+            {result.pending_approval ? "Proposed repairs (not yet applied)" : "Repaired"}:{" "}
+            {String(result.repaired_count ?? 0)}
           </div>
+          <div>Affected: {String(result.affected_count ?? 0)}</div>
+          {result.pending_approval ? (
+            <div className="mt-1 font-medium text-amber-700">
+              Nothing has been reassigned yet — a coordinator must approve this on the Decisions
+              page before any task changes.
+            </div>
+          ) : (
+            <div className="mt-1 text-slate-500">Recovery applied immediately (no approval required).</div>
+          )}
         </div>
       )}
     </div>

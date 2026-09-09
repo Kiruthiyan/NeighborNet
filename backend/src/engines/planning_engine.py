@@ -1,15 +1,18 @@
 """Deterministic planning for normal and disaster coordination tasks."""
 
 from datetime import datetime, timedelta
-from typing import Iterable, List, Optional
+from typing import Iterable, List, Optional, Tuple
 
 from src.models import (
+    Allocation,
     CoordinationTask,
     DisasterEvent,
     DisasterNeed,
     InventoryBatch,
+    InventoryStatus,
     OperatingMode,
     Request,
+    RequestStatus,
     TaskLifecycle,
     TaskPriority,
     Volunteer,
@@ -31,16 +34,50 @@ class PlanningEngine:
         inventory: Iterable[InventoryBatch],
         requests: Iterable[Request],
         volunteers: Iterable[Volunteer],
-    ) -> Optional[CoordinationTask]:
-        """Create one normal delivery task from best obvious match."""
+    ) -> Optional[Tuple[CoordinationTask, Allocation]]:
+        """Create one normal delivery task from the best obvious match, and
+        persist the allocation onto the matched Request/InventoryBatch
+        (mutated in place - callers pass the live state.inventory /
+        state.requests lists) so a repeat call can never match the same
+        supply twice. Skips batches that are expired, not AVAILABLE, or
+        already fully allocated."""
 
         for request in requests:
+            if request.quantity_remaining <= 0:
+                continue
             for batch in inventory:
+                if batch.status != InventoryStatus.AVAILABLE or batch.is_expired:
+                    continue
                 if not request.can_fulfill_with(batch):
                     continue
                 quantity = min(request.quantity_remaining, batch.quantity_unallocated)
                 if quantity <= 0:
                     continue
+
+                # Persist the match onto the actual Request/InventoryBatch
+                # objects - this is what makes matching non-repeatable:
+                # quantity_remaining / quantity_unallocated are computed
+                # properties derived from these fields.
+                batch.quantity_allocated += quantity
+                if batch.quantity_unallocated <= 0:
+                    batch.status = InventoryStatus.ALLOCATED
+                request.quantity_fulfilled += quantity
+                request.status = (
+                    RequestStatus.FULFILLED
+                    if request.quantity_remaining <= 0
+                    else RequestStatus.PARTIALLY_FULFILLED
+                )
+
+                allocation = Allocation(
+                    request_id=request.request_id,
+                    batch_id=batch.batch_id,
+                    quantity_allocated=quantity,
+                )
+                # Composite DynamoDB key (allocation_id, plan_id) requires a
+                # non-null range key; there's no multi-allocation "plan"
+                # concept here, so each allocation is its own plan.
+                allocation.plan_id = allocation.allocation_id
+
                 task = CoordinationTask(
                     operating_mode=OperatingMode.NORMAL,
                     title=f"Deliver {quantity} {batch.unit} to request",
@@ -51,6 +88,7 @@ class PlanningEngine:
                     category="food_delivery",
                     request_id=request.request_id,
                     resource_batch_id=batch.batch_id,
+                    allocation_ids=[allocation.allocation_id],
                     pickup_location={"org_id": batch.location_id},
                     destination={"org_id": request.requesting_org_id},
                     quantity=quantity,
@@ -59,7 +97,7 @@ class PlanningEngine:
                     required_capacity=quantity,
                     expected_completion_time=datetime.now() + timedelta(hours=2),
                 )
-                return self.assign_best_volunteer(task, volunteers)
+                return self.assign_best_volunteer(task, volunteers), allocation
         return None
 
     def create_disaster_tasks(

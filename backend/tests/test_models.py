@@ -4,7 +4,7 @@ import pytest
 from datetime import datetime, timedelta, time
 
 from src.models import (
-    User, UserRole,
+    User, AccountType, UserCapabilities,
     Organization, OrganizationType, Location, OperatingHours,
     InventoryBatch, ResourceType, InventoryStatus, DietaryMetadata,
     Request, RequestStatus, UrgencyLevel, DeliveryWindow,
@@ -22,36 +22,37 @@ class TestUserModel:
     def test_user_creation(self):
         """Test basic user creation."""
         user = User(
-            role=UserRole.COORDINATOR,
+            account_type=AccountType.ADMIN,
             name="Test User",
             email="test@example.com"
         )
-        
+
         assert user.user_id.startswith("user_")
-        assert user.role == UserRole.COORDINATOR
+        assert user.account_type == AccountType.ADMIN
+        assert user.is_admin is True
         assert user.name == "Test User"
         assert user.is_active is True
         assert user.city == "Demo City"
-    
+
     def test_user_dynamodb_conversion(self):
         """Test DynamoDB conversion."""
         user = User(
-            role=UserRole.VOLUNTEER,
+            capabilities=UserCapabilities(is_volunteer=True),
             name="Jane Doe",
             phone="555-1234"
         )
-        
+
         dynamodb_item = user.to_dynamodb()
-        
+
         assert "user_id" in dynamodb_item
-        assert dynamodb_item["role"] == "volunteer"
+        assert dynamodb_item["capabilities"]["is_volunteer"] is True
         assert dynamodb_item["name"] == "Jane Doe"
         assert "created_at" in dynamodb_item
         
         # Test round-trip conversion
         user_restored = User.from_dynamodb(dynamodb_item)
         assert user_restored.name == user.name
-        assert user_restored.role == user.role
+        assert user_restored.capabilities.is_volunteer == user.capabilities.is_volunteer
 
 
 class TestOrganizationModel:
@@ -356,7 +357,7 @@ class TestSeedDataGeneration:
         # Verify data integrity
         for user in data["users"]:
             assert user.user_id.startswith("user_")
-            assert isinstance(user.role, UserRole)
+            assert isinstance(user.account_type, AccountType)
         
         for org in data["organizations"]:
             assert org.org_id.startswith("org_")

@@ -5,24 +5,36 @@ table definitions exist separately for persistence wiring.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
+import structlog
+
 from src.engines import PlanningEngine, RecoveryEngine
+from src.services.database import get_database_service
 from src.models import (
+    Allocation,
+    AuditActionType,
+    AuditSeverity,
     CoordinationTask,
     Decision,
     DecisionType,
+    DietaryMetadata,
     DisasterEvent,
     DisasterNeed,
     Event,
     EventType,
+    Invitation,
     InventoryBatch,
     OperatingMode,
     Request,
+    RequestStatus,
+    ResourceType,
     RiskClassification,
+    StrandsAuditLog,
     TaskLifecycle,
     TaskPriority,
+    UrgencyLevel,
     User,
     Volunteer,
     VolunteerAlert,
@@ -38,6 +50,13 @@ TABLE_TASKS = "Tasks"
 TABLE_DECISIONS = "Decisions"
 TABLE_VOLUNTEERS = "Volunteers"
 TABLE_USERS = "Users"
+TABLE_INVITATIONS = "Invitations"
+TABLE_INVENTORY = "Inventory"
+TABLE_REQUESTS = "Requests"
+TABLE_ALLOCATIONS = "Allocations"
+TABLE_STRANDS_AUDIT_LOGS = "StrandsAuditLogs"
+
+logger = structlog.get_logger(__name__)
 
 
 @dataclass
@@ -47,6 +66,7 @@ class CoordinationState:
     users: List[User] = field(default_factory=list)
     inventory: List[InventoryBatch] = field(default_factory=list)
     requests: List[Request] = field(default_factory=list)
+    allocations: List[Allocation] = field(default_factory=list)
     volunteers: List[Volunteer] = field(default_factory=list)
     disasters: List[DisasterEvent] = field(default_factory=list)
     disaster_needs: List[DisasterNeed] = field(default_factory=list)
@@ -54,6 +74,8 @@ class CoordinationState:
     tasks: List[CoordinationTask] = field(default_factory=list)
     decisions: List[Decision] = field(default_factory=list)
     events: List[Event] = field(default_factory=list)
+    invitations: List[Invitation] = field(default_factory=list)
+    strands_audit_logs: List[StrandsAuditLog] = field(default_factory=list)
 
 
 class CoordinationService:
@@ -64,6 +86,12 @@ class CoordinationService:
         self.recovery = RecoveryEngine()
         self.state = CoordinationState()
         self.store = get_dynamo_store()
+        # Recovery plans staged behind a pending AMBER Decision, keyed by
+        # decision_id, not applied to operational state until a coordinator
+        # approves them. Intentionally in-memory only (see approve_decision) -
+        # a process restart loses unapplied plans rather than silently
+        # resurrecting a stale one.
+        self._pending_recovery_plans: Dict[str, Dict[str, object]] = {}
         if not (self.store.enabled and self.load_from_dynamodb()):
             self.reset()
 
@@ -86,6 +114,10 @@ class CoordinationService:
                 self.store.put(TABLE_VOLUNTEERS, volunteer.model_dump(mode="json"))
             for user in self.state.users:
                 self.store.put(TABLE_USERS, user.model_dump(mode="json"))
+            for batch in self.state.inventory:
+                self.store.put(TABLE_INVENTORY, batch.model_dump(mode="json"))
+            for request in self.state.requests:
+                self.store.put(TABLE_REQUESTS, request.model_dump(mode="json"))
         return self.summary_counts()
 
     def load_from_dynamodb(self) -> bool:
@@ -97,11 +129,22 @@ class CoordinationService:
             return False
 
         seed = generate_seed_data()
+        inventory_items = self.store.scan_all(TABLE_INVENTORY)
+        request_items = self.store.scan_all(TABLE_REQUESTS)
         self.state = CoordinationState(
             users=[User.model_validate(item) for item in self.store.scan_all(TABLE_USERS)]
             or seed["users"],
-            inventory=seed["inventory"],
-            requests=seed["requests"],
+            # Fall back to seed data only if the shared table is genuinely
+            # empty (first run) - once allocations exist, reseeding here
+            # would silently erase real donor/request/allocation state on
+            # every restart.
+            inventory=[InventoryBatch.model_validate(item) for item in inventory_items]
+            or seed["inventory"],
+            requests=[Request.model_validate(item) for item in request_items]
+            or seed["requests"],
+            allocations=[
+                Allocation.model_validate(item) for item in self.store.scan_all(TABLE_ALLOCATIONS)
+            ],
             volunteers=[Volunteer.model_validate(item) for item in volunteer_items],
             disasters=[
                 DisasterEvent.model_validate(item)
@@ -117,12 +160,141 @@ class CoordinationService:
         self.state.decisions = [
             Decision.model_validate(item) for item in self.store.scan_all(TABLE_DECISIONS)
         ]
+        self.state.invitations = [
+            Invitation.model_validate(item) for item in self.store.scan_all(TABLE_INVITATIONS)
+        ]
+        self.state.strands_audit_logs = [
+            StrandsAuditLog.model_validate(item)
+            for item in self.store.scan_all(TABLE_STRANDS_AUDIT_LOGS)
+        ]
+        self._backfill_legacy_auth_fields(seed)
         return True
+
+    def _backfill_legacy_auth_fields(self, seed: Dict[str, list]) -> None:
+        """One-time migration for a shared DynamoDB table seeded before
+        authentication existed: those records have no password_hash and no
+        admin account at all. Patches auth fields onto matching seed users
+        (matched by email) and adds the seed admin if missing entirely -
+        idempotent, and never touches a real user who already has a
+        password_hash (i.e. anyone who signed up through /api/auth/signup)."""
+
+        seed_by_email = {u.email: u for u in seed["users"] if u.email}
+        existing_emails = {u.email for u in self.state.users if u.email}
+        patched = False
+
+        for user in self.state.users:
+            if user.password_hash or not user.email:
+                continue
+            seed_user = seed_by_email.get(user.email)
+            if seed_user is None:
+                continue
+            user.account_type = seed_user.account_type
+            user.capabilities = seed_user.capabilities
+            user.password_hash = seed_user.password_hash
+            user.email_verified = seed_user.email_verified
+            self._persist(TABLE_USERS, user)
+            patched = True
+
+        seed_admin = next((u for u in seed["users"] if u.is_admin), None)
+        if seed_admin is not None and seed_admin.email not in existing_emails:
+            self.state.users.append(seed_admin)
+            self._persist(TABLE_USERS, seed_admin)
+            patched = True
+
+        if patched:
+            logger.info("backfilled_legacy_user_auth_fields", table=TABLE_USERS)
+
+    def _bind_volunteer(self, volunteer_id: Optional[str]) -> None:
+        """Mark a volunteer as carrying an active task, so the matcher's
+        hard capacity cap (see VolunteerMatcher.score) actually reflects
+        reality instead of a field nothing ever updates."""
+
+        if not volunteer_id:
+            return
+        volunteer = next((v for v in self.state.volunteers if v.volunteer_id == volunteer_id), None)
+        if volunteer is None:
+            return
+        volunteer.current_task_count += 1
+        volunteer.availability_status = "busy"
+        self._persist(TABLE_VOLUNTEERS, volunteer)
+
+    def _release_volunteer(self, volunteer_id: Optional[str]) -> None:
+        """Free capacity when a volunteer's task ends (completed, cancelled,
+        failed, or superseded by a recovery replacement)."""
+
+        if not volunteer_id:
+            return
+        volunteer = next((v for v in self.state.volunteers if v.volunteer_id == volunteer_id), None)
+        if volunteer is None:
+            return
+        volunteer.current_task_count = max(0, volunteer.current_task_count - 1)
+        if volunteer.current_task_count == 0:
+            volunteer.availability_status = "available"
+        self._persist(TABLE_VOLUNTEERS, volunteer)
 
     def _persist(self, table_name: str, model) -> None:
         """Write-through one model to the shared DynamoDB table, if enabled."""
 
         self.store.put(table_name, model.model_dump(mode="json"))
+
+    # -- User & invitation management ------------------------------------
+
+    def get_user_by_email(self, email: str) -> Optional[User]:
+        email_lower = email.strip().lower()
+        return next(
+            (u for u in self.state.users if (u.email or "").strip().lower() == email_lower),
+            None,
+        )
+
+    def get_user(self, user_id: str) -> Optional[User]:
+        return next((u for u in self.state.users if u.user_id == user_id), None)
+
+    def get_volunteer_by_user_id(self, user_id: str) -> Optional[Volunteer]:
+        return next((v for v in self.state.volunteers if v.user_id == user_id), None)
+
+    def create_user(self, user: User) -> User:
+        self.state.users.append(user)
+        self._persist(TABLE_USERS, user)
+        return user
+
+    def update_user(self, user: User) -> User:
+        user.update_timestamp()
+        for index, existing in enumerate(self.state.users):
+            if existing.user_id == user.user_id:
+                self.state.users[index] = user
+                break
+        self._persist(TABLE_USERS, user)
+        return user
+
+    def delete_user(self, user_id: str) -> bool:
+        before = len(self.state.users)
+        self.state.users = [u for u in self.state.users if u.user_id != user_id]
+        deleted = len(self.state.users) < before
+        if deleted and self.store.enabled:
+            try:
+                get_database_service().resource.Table(TABLE_USERS).delete_item(
+                    Key={"user_id": user_id}
+                )
+            except Exception as exc:  # pragma: no cover - depends on live AWS
+                logger.warning("dynamodb_delete_failed", table=TABLE_USERS, error=str(exc))
+        return deleted
+
+    def create_invitation(self, invitation: Invitation) -> Invitation:
+        self.state.invitations.append(invitation)
+        self._persist(TABLE_INVITATIONS, invitation)
+        return invitation
+
+    def get_invitation_by_token(self, token: str) -> Optional[Invitation]:
+        return next((i for i in self.state.invitations if i.token == token), None)
+
+    def update_invitation(self, invitation: Invitation) -> Invitation:
+        invitation.update_timestamp()
+        for index, existing in enumerate(self.state.invitations):
+            if existing.invite_id == invitation.invite_id:
+                self.state.invitations[index] = invitation
+                break
+        self._persist(TABLE_INVITATIONS, invitation)
+        return invitation
 
     def summary_counts(self) -> Dict[str, int]:
         """Return entity counts for health/dashboard."""
@@ -139,6 +311,37 @@ class CoordinationService:
             "events": len(self.state.events),
         }
 
+    def _community_readiness(self, pending_decisions_count: int) -> int:
+        """Composite 0-100 readiness score computed from real state: how
+        much of the volunteer pool is free, how well requests are being
+        fulfilled, and how large the human-approval backlog is. Replaces a
+        constant 82 that never reflected any actual system state."""
+
+        total_volunteers = len(self.state.volunteers) or 1
+        available_volunteers = len(
+            [v for v in self.state.volunteers if v.is_available_for_assignment]
+        )
+        volunteer_coverage = available_volunteers / total_volunteers
+
+        total_requests = len(self.state.requests) or 1
+        fulfilled_requests = len(
+            [
+                r
+                for r in self.state.requests
+                if r.status in (RequestStatus.FULFILLED, RequestStatus.PARTIALLY_FULFILLED)
+            ]
+        )
+        fulfillment_rate = fulfilled_requests / total_requests
+
+        decision_backlog_penalty = min(1.0, pending_decisions_count * 0.1)
+
+        score = (
+            volunteer_coverage * 0.5
+            + fulfillment_rate * 0.3
+            + (1 - decision_backlog_penalty) * 0.2
+        ) * 100
+        return round(max(0.0, min(100.0, score)))
+
     def dashboard_readiness(self) -> Dict[str, object]:
         """Aggregate normal/disaster readiness for dashboard."""
 
@@ -152,7 +355,7 @@ class CoordinationService:
             if decision.requires_human_approval and not decision.human_approval
         ]
         return {
-            "community_readiness": 82,
+            "community_readiness": self._community_readiness(len(pending_decisions)),
             "active_requests": len(self.state.requests),
             "inventory_batches": len(self.state.inventory),
             "active_volunteers": len(
@@ -209,19 +412,97 @@ class CoordinationService:
         }
 
     def create_normal_task(self) -> Optional[CoordinationTask]:
-        """Plan and store one normal food delivery task."""
+        """Plan and store one normal food delivery task, persisting the
+        allocation it consumes so the same supply can never be matched
+        twice. Each call advances state - repeat calls produce a new task
+        against the next remaining match, or None once nothing matches."""
 
-        task = self.planning.create_normal_task(
+        result = self.planning.create_normal_task(
             self.state.inventory,
             self.state.requests,
             self.state.volunteers,
         )
-        if task:
-            task.task_id = "task_normal_surplus_delivery"
-            self.state.tasks.append(task)
-            self._persist(TABLE_TASKS, task)
-            self._record_event("Normal surplus delivery task created", "normal")
+        if not result:
+            return None
+        task, allocation = result
+
+        self.state.tasks.append(task)
+        self.state.allocations.append(allocation)
+        self._persist(TABLE_TASKS, task)
+        self._persist(TABLE_ALLOCATIONS, allocation)
+        self._bind_volunteer(task.volunteer_id)
+
+        batch = next((b for b in self.state.inventory if b.batch_id == allocation.batch_id), None)
+        request = next((r for r in self.state.requests if r.request_id == allocation.request_id), None)
+        if batch is not None:
+            self._persist(TABLE_INVENTORY, batch)
+        if request is not None:
+            self._persist(TABLE_REQUESTS, request)
+
+        self._record_event(
+            f"Normal surplus delivery task created: {allocation.quantity_allocated} units allocated",
+            "normal",
+        )
         return task
+
+    def create_inventory_batch(self, payload: Dict[str, object], donor: User) -> InventoryBatch:
+        """Record a donor's surplus food/resource donation."""
+
+        quantity = int(payload.get("quantity_available", payload.get("quantity", 0)) or 0)
+        if quantity <= 0:
+            raise ValueError("quantity_available must be positive")
+
+        dietary_payload = payload.get("dietary_metadata") or {}
+        batch = InventoryBatch(
+            resource_type=ResourceType(str(payload.get("resource_type", "pantry_item")).lower()),
+            quantity_available=quantity,
+            description=str(payload.get("description", "Donated items")),
+            brand=payload.get("brand"),
+            size=payload.get("size"),
+            unit=str(payload.get("unit", "items")),
+            expiry_datetime=payload.get("expiry_datetime"),
+            donor_org_id=str(payload.get("donor_org_id") or donor.user_id),
+            location_id=str(payload.get("location_id") or payload.get("donor_org_id") or donor.user_id),
+            dietary_metadata=DietaryMetadata(**dietary_payload) if dietary_payload else DietaryMetadata(),
+            temperature_requirements=payload.get("temperature_requirements"),
+        )
+        self.state.inventory.append(batch)
+        self._persist(TABLE_INVENTORY, batch)
+        self._record_event(
+            f"Inventory donated: {batch.quantity_available} {batch.unit} of {batch.description}",
+            "normal",
+        )
+        return batch
+
+    def create_request(self, payload: Dict[str, object], requester: User) -> Request:
+        """Record a community resource request."""
+
+        quantity = int(payload.get("quantity_requested", payload.get("quantity", 0)) or 0)
+        if quantity <= 0:
+            raise ValueError("quantity_requested must be positive")
+
+        required_by = payload.get("required_by") or (datetime.now() + timedelta(hours=24))
+        dietary_payload = payload.get("dietary_restrictions") or {}
+        request = Request(
+            requesting_org_id=str(payload.get("requesting_org_id") or requester.user_id),
+            resource_type=ResourceType(str(payload.get("resource_type", "pantry_item")).lower()),
+            quantity_requested=quantity,
+            urgency_level=UrgencyLevel(str(payload.get("urgency_level", "medium")).lower()),
+            required_by=required_by,
+            dietary_restrictions=DietaryMetadata(**dietary_payload) if dietary_payload else DietaryMetadata(),
+            purpose=payload.get("purpose"),
+            recipient_count=payload.get("recipient_count"),
+            notes=payload.get("notes"),
+            contact_person=payload.get("contact_person") or requester.name,
+            contact_phone=payload.get("contact_phone"),
+        )
+        self.state.requests.append(request)
+        self._persist(TABLE_REQUESTS, request)
+        self._record_event(
+            f"Request created: {request.quantity_requested} x {request.resource_type.value}",
+            "normal",
+        )
+        return request
 
     def create_disaster(self, payload: Dict[str, object]) -> DisasterEvent:
         """Create admin disaster event."""
@@ -303,9 +584,26 @@ class CoordinationService:
         return alert
 
     def assign_disaster_tasks(self, disaster_id: str) -> List[CoordinationTask]:
-        """Assign accepted volunteers to disaster tasks."""
+        """Assign accepted volunteers to disaster tasks.
+
+        Idempotent: a need that already has a live (non-superseded) task is
+        skipped, so calling this twice for the same disaster never creates
+        duplicate tasks. Volunteers already carrying an active task are
+        excluded up front (belt-and-braces on top of the matcher's own
+        capacity cap)."""
 
         disaster = self.get_disaster(disaster_id)
+        existing_need_ids = {
+            task.need_id
+            for task in self.state.tasks
+            if task.disaster_id == disaster_id
+            and task.need_id
+            and task.status != TaskLifecycle.SUPERSEDED
+        }
+        pending_needs = [need for need in disaster.needs if need.need_id not in existing_need_ids]
+        if not pending_needs:
+            return []
+
         accepted_ids = {
             alert.volunteer_id
             for alert in self.state.alerts
@@ -315,98 +613,196 @@ class CoordinationService:
         volunteers = [
             volunteer
             for volunteer in self.state.volunteers
-            if volunteer.volunteer_id in accepted_ids
+            if volunteer.volunteer_id in accepted_ids and volunteer.current_task_count == 0
         ]
-        tasks = self.planning.create_disaster_tasks(disaster, volunteers)
-        for index, task in enumerate(tasks, start=1):
-            task.task_id = f"task_{disaster_id}_{index}"
+        pending_disaster = disaster.model_copy(update={"needs": pending_needs})
+        tasks = self.planning.create_disaster_tasks(pending_disaster, volunteers)
         self.state.tasks.extend(tasks)
         for task in tasks:
             self._persist(TABLE_TASKS, task)
+            self._bind_volunteer(task.volunteer_id)
         self._record_event(f"Disaster tasks assigned: {len(tasks)}", "disaster")
         return tasks
 
     def update_task_status(self, task_id: str, status: TaskLifecycle) -> CoordinationTask:
-        """Update task status."""
+        """Update task status. Releases the assigned volunteer's capacity
+        once the task reaches a terminal state."""
 
         task = self.get_task(task_id)
+        was_active = task.is_active
         task.status = status
         task.updated_at = datetime.now()
         self._persist(TABLE_TASKS, task)
+        if was_active and not task.is_active:
+            self._release_volunteer(task.volunteer_id)
         self._record_event(f"Task status changed: {task_id} -> {status.value}", task.operating_mode.value)
         return task
 
     def recover(self, disruption: Dict[str, object]) -> Dict[str, object]:
-        """Run shared recovery flow and create AMBER if needed."""
+        """Compute a recovery plan for a disruption.
+
+        GREEN (create_amber_decision=False, an internal/system-triggered
+        repair with no meaningful tradeoff): applied immediately.
+
+        AMBER (default): the plan is staged behind a pending Decision and
+        NOT applied to operational state - no task is reassigned, and no
+        original task is retired - until a coordinator calls
+        approve_decision(). This is the actual safety gate; previously the
+        reassignment happened here unconditionally and the Decision record
+        was just an after-the-fact notification.
+        """
 
         result = self.recovery.recover_tasks(
             self.state.tasks,
             self.state.volunteers,
             disruption,
         )
-        repaired = result["repaired"]
+
+        if not disruption.get("create_amber_decision", True):
+            self._apply_recovery_plan(result)
+            self._record_event(
+                "Recovery completed", str(disruption.get("operating_mode", "disaster"))
+            )
+            return {**result, "pending_approval": False}
+
+        reason = disruption.get("reason")
+        zone = disruption.get("zone")
+        volunteer_id = disruption.get("volunteer_id")
+
+        title = f"Approve recovery: {reason}" if reason else "Approve disaster recovery conflict"
+
+        description_parts = [
+            str(reason) if reason else "A disruption affected active recovery tasks.",
+        ]
+        if volunteer_id:
+            description_parts.append(f"Volunteer {volunteer_id} unavailable.")
+        if zone:
+            description_parts.append(f"Zone affected: {zone}.")
+        description_parts.append(
+            f"{result['affected_count']} task(s) affected, "
+            f"{result['repaired_count']} repair(s) proposed pending approval."
+        )
+        description = " ".join(description_parts)
+
+        decision = Decision(
+            decision_type=DecisionType.RECOVERY_STRATEGY,
+            title=title,
+            description=description,
+            context={
+                "triggering_event": disruption,
+                "affected_count": result["affected_count"],
+                "preserved_count": result["preserved_count"],
+                "repaired_count": result["repaired_count"],
+            },
+            risk_classification=RiskClassification.AMBER,
+            requires_human_approval=True,
+        )
+        option = decision.add_option(
+            "Approve reassignment",
+            "Use next-best verified volunteer and monitor completion.",
+            pros=["Restores coverage quickly"],
+            risks=["Adds delay to lower-priority task"],
+            confidence_level=0.84,
+        )
+        decision.selected_option_id = option.option_id
+        self.state.decisions.append(decision)
+        self._persist(TABLE_DECISIONS, decision)
+
+        # Not persisted to DynamoDB: an unapplied plan surviving a restart
+        # would be stale (volunteer availability may have already changed by
+        # the time anyone approves it). If the process restarts before
+        # approval, approve_decision() below detects the missing plan rather
+        # than silently no-op'ing.
+        self._pending_recovery_plans[decision.decision_id] = result
+
+        self._record_event(
+            f"Recovery pending approval: {result['repaired_count']} task(s) proposed",
+            str(disruption.get("operating_mode", "disaster")),
+        )
+        return {
+            "preserved": result["preserved"],
+            "repaired": result["repaired"],
+            "superseded": result["superseded"],
+            "affected_count": result["affected_count"],
+            "preserved_count": result["preserved_count"],
+            "repaired_count": result["repaired_count"],
+            "pending_approval": True,
+            "decision_id": decision.decision_id,
+        }
+
+    def _apply_recovery_plan(self, plan: Dict[str, object]) -> None:
+        """Mutate operational state: add the repaired tasks, retire the
+        originals they replace. The only place recovery actually changes
+        `state.tasks` - called either immediately (GREEN) or from
+        approve_decision (AMBER)."""
+
+        repaired = plan["repaired"]
+        superseded = plan["superseded"]
         self.state.tasks.extend(repaired)
         for task in repaired:
             self._persist(TABLE_TASKS, task)
-
-        if disruption.get("create_amber_decision", True):
-            reason = disruption.get("reason")
-            zone = disruption.get("zone")
-            volunteer_id = disruption.get("volunteer_id")
-
-            title = f"Approve recovery: {reason}" if reason else "Approve disaster recovery conflict"
-
-            description_parts = [
-                str(reason) if reason else "A disruption affected active recovery tasks.",
-            ]
-            if volunteer_id:
-                description_parts.append(f"Volunteer {volunteer_id} unavailable.")
-            if zone:
-                description_parts.append(f"Zone affected: {zone}.")
-            description_parts.append(
-                f"{result['affected_count']} task(s) affected, "
-                f"{result['repaired_count']} repaired via reassignment."
-            )
-            description = " ".join(description_parts)
-
-            decision = Decision(
-                decision_id="decision_meaningful_amber_conflict",
-                decision_type=DecisionType.RECOVERY_STRATEGY,
-                title=title,
-                description=description,
-                context={
-                    "triggering_event": disruption,
-                    "affected_count": result["affected_count"],
-                    "preserved_count": result["preserved_count"],
-                },
-                risk_classification=RiskClassification.AMBER,
-                requires_human_approval=True,
-            )
-            decision.add_option(
-                "Approve reassignment",
-                "Use next-best verified volunteer and monitor completion.",
-                pros=["Restores coverage quickly"],
-                risks=["Adds delay to lower-priority task"],
-                confidence_level=0.84,
-            )
-            self.state.decisions.append(decision)
-            self._persist(TABLE_DECISIONS, decision)
-
-        self._record_event("Recovery completed", str(disruption.get("operating_mode", "disaster")))
-        return result
+            self._bind_volunteer(task.volunteer_id)
+        for task in superseded:
+            # Same object referenced in self.state.tasks. RecoveryEngine
+            # deliberately leaves it untouched during planning (see
+            # RecoveryEngine.recover_tasks) - actually retiring it only
+            # happens here, at the moment the plan is applied.
+            freed_volunteer_id = task.volunteer_id
+            task.status = TaskLifecycle.SUPERSEDED
+            task.recovery_reason = task.recovery_reason or "Superseded by recovery reassignment"
+            task.updated_at = datetime.now()
+            self._persist(TABLE_TASKS, task)
+            self._release_volunteer(freed_volunteer_id)
 
     def approve_decision(self, decision_id: str, coordinator_id: str) -> Decision:
-        """Approve AMBER decision and mark workflow resumable."""
+        """Approve a pending decision and, for a recovery decision, execute
+        its staged plan exactly once."""
 
         decision = self.get_decision(decision_id)
         if decision.risk_classification == RiskClassification.RED:
             raise ValueError("RED decisions cannot be approved for autonomous execution")
+        if decision.human_approval is not None:
+            raise ValueError("Decision has already been decided")
+
+        if decision.decision_type == DecisionType.RECOVERY_STRATEGY:
+            plan = self._pending_recovery_plans.pop(decision_id, None)
+            if plan is not None:
+                self._apply_recovery_plan(plan)
+                decision.implementation_notes = (
+                    f"Applied {plan['repaired_count']} repaired task(s)."
+                )
+            else:
+                decision.implementation_notes = (
+                    "No staged plan was found (server restarted before "
+                    "approval); no tasks were changed. Re-trigger the "
+                    "disruption to generate a fresh plan."
+                )
+
         if decision.options:
             decision.selected_option_id = decision.options[0].option_id
         decision.approve(coordinator_id, "Coordinator", "coordinator")
         decision.decided_at = datetime.now()
+        decision.implementation_started = True
+        decision.implementation_completed = True
         self._persist(TABLE_DECISIONS, decision)
         self._record_event(f"Decision approved: {decision_id}", "disaster")
+        return decision
+
+    def reject_decision(
+        self, decision_id: str, coordinator_id: str, coordinator_name: str, reason: str
+    ) -> Decision:
+        """Reject a pending decision. Its staged plan (if any) is discarded,
+        never applied."""
+
+        decision = self.get_decision(decision_id)
+        if decision.human_approval is not None:
+            raise ValueError("Decision has already been decided")
+
+        self._pending_recovery_plans.pop(decision_id, None)
+        decision.reject(coordinator_id, coordinator_name, "coordinator", reason)
+        decision.decided_at = datetime.now()
+        self._persist(TABLE_DECISIONS, decision)
+        self._record_event(f"Decision rejected: {decision_id}", "disaster")
         return decision
 
     def get_disaster(self, disaster_id: str) -> DisasterEvent:
@@ -454,6 +850,36 @@ class CoordinationService:
         if volunteer.preferred_service_area in disaster.affected_zones:
             return 2.4
         return 4.8
+
+    def record_strands_audit(
+        self,
+        tool_name: str,
+        params: Dict[str, object],
+        result: object = None,
+        error: Optional[str] = None,
+    ) -> StrandsAuditLog:
+        """Record one Strands agent tool invocation. Called from every tool
+        in src/agents/strands_tools.py - this is the actual per-instruction,
+        per-tool trail the audit claims; previously nothing on the live
+        agent path wrote to StrandsAuditLog at all."""
+
+        log = StrandsAuditLog(
+            action_type=AuditActionType.AGENT_TOOL_EXECUTION,
+            severity=AuditSeverity.ERROR if error else AuditSeverity.INFO,
+            actor_type="agent",
+            actor_id="strands_orchestrator",
+            actor_name="NeighborNet Orchestrator",
+            action_description=f"Strands agent called tool: {tool_name}",
+            resource_type="strands_tool",
+            resource_id=tool_name,
+            event_context={"params": params},
+            metadata={"result": result} if result is not None else {},
+        )
+        if error:
+            log.add_error(error)
+        self.state.strands_audit_logs.append(log)
+        self._persist(TABLE_STRANDS_AUDIT_LOGS, log)
+        return log
 
     def _record_event(self, description: str, mode: str) -> None:
         """Record auditable local event."""

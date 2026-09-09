@@ -22,6 +22,7 @@ class TaskLifecycle(str, Enum):
     NEEDS_ATTENTION = "needs_attention"
     CANCELLED = "cancelled"
     FAILED = "failed"
+    SUPERSEDED = "superseded"
 
 
 class TaskPriority(str, Enum):

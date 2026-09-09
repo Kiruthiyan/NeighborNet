@@ -34,15 +34,26 @@ class NeighborNetOrchestrator:
             "metrics": self.service.dashboard_readiness(),
         }
 
-    def run_disaster_mode(self, disaster_id: str) -> Dict[str, object]:
-        """Run disaster detection, alert dispatch, and task assignment."""
+    def run_disaster_mode(self, disaster_id: str, simulate_responses: bool = False) -> Dict[str, object]:
+        """Run disaster detection and alert dispatch. Task assignment only
+        picks up volunteers who have genuinely accepted their alert (via
+        POST /api/alerts/{id}/accept) - it does NOT wait/block here, so
+        calling this alone will typically assign nothing yet; call
+        plan_disaster / assign_disaster_tasks again once real responses
+        have come in.
+
+        `simulate_responses` fabricates accept/decline responses instead of
+        waiting for real volunteers - demo/offline-scenario use only (see
+        src/demo/scenario_runner.py). Defaults to False so the normal
+        request path never pretends a human responded."""
 
         sentinel_report = self.sentinel.process_disaster(disaster_id)
         alerts = self.service.dispatch_disaster(disaster_id)
-        decline_index = 3 if len(alerts) > 3 else None
-        for index, alert in enumerate(alerts):
-            response = "decline" if index == decline_index else "accept"
-            self.service.respond_to_alert(alert.alert_id, response)
+        if simulate_responses:
+            decline_index = 3 if len(alerts) > 3 else None
+            for index, alert in enumerate(alerts):
+                response = "decline" if index == decline_index else "accept"
+                self.service.respond_to_alert(alert.alert_id, response)
         tasks = self.planner.plan_disaster(disaster_id)
         return {
             "agent": self.name,

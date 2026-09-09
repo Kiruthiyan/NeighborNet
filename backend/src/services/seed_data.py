@@ -9,13 +9,18 @@ from copy import deepcopy
 import random
 
 from ..models import (
-    User, UserRole,
+    User, AccountType, UserCapabilities,
     Organization, OrganizationType, Location, OperatingHours,
     InventoryBatch, ResourceType, InventoryStatus, DietaryMetadata,
     Request, RequestStatus, UrgencyLevel, DeliveryWindow,
     Volunteer, VolunteerStatus, VolunteerAvailability, AvailabilitySlot,
     DisasterEvent, DisasterNeed, TaskPriority
 )
+from ..auth.security import hash_password
+
+# Demo-only default password for every seeded account (documented in
+# tasks.md). Real signups always set their own password via /api/auth/signup.
+DEFAULT_DEMO_PASSWORD = "ChangeMe123!"
 
 
 class SeedDataGenerator:
@@ -59,55 +64,78 @@ class SeedDataGenerator:
     
     def _generate_users(self) -> None:
         """Generate user data."""
-        # Coordinators
+        demo_password_hash = hash_password(DEFAULT_DEMO_PASSWORD)
+
+        # Seeded admin account. Never created through signup - see
+        # docs/AUTH_PLAN.md. Admins implicitly have coordinator access too.
+        self.users.append(User(
+            user_id="user_admin_demo",
+            account_type=AccountType.ADMIN,
+            name="NeighborNet Admin",
+            email="admin@neighbornet.org",
+            phone="555-0100",
+            password_hash=demo_password_hash,
+            email_verified=True,
+        ))
+
+        # Coordinators (granted the capability directly since they're seed
+        # data, not signups going through the admin-approval flow).
         self.users.extend([
             User(
-                role=UserRole.COORDINATOR,
                 name="Sarah Chen",
                 email="sarah.chen@neighbornet.org",
                 phone="555-0101",
+                capabilities=UserCapabilities(is_coordinator=True),
+                password_hash=demo_password_hash,
+                email_verified=True,
                 permissions={"approve_allocations": True, "manage_volunteers": True}
             ),
             User(
-                role=UserRole.COORDINATOR,
-                name="Michael Rodriguez", 
+                name="Michael Rodriguez",
                 email="m.rodriguez@neighbornet.org",
                 phone="555-0102",
+                capabilities=UserCapabilities(is_coordinator=True),
+                password_hash=demo_password_hash,
+                email_verified=True,
                 permissions={"approve_allocations": True, "emergency_override": True}
             )
         ])
-        
+
         # Volunteer users (will be referenced by Volunteer models)
         volunteer_names = [
-            "Emma Johnson", "David Kim", "Lisa Thompson", "Carlos Mendez", 
+            "Emma Johnson", "David Kim", "Lisa Thompson", "Carlos Mendez",
             "Jennifer Wu", "Robert Taylor", "Amanda Foster", "James Wilson",
             "Maria Gonzalez", "Kevin O'Brien", "Samantha Lee", "Daniel Brown",
             "Rachel Green", "Christopher Davis", "Ashley Martinez", "Steven Clark",
             "Nicole Anderson", "Jonathan White", "Stephanie Harris"
         ]
-        
+
         for name in volunteer_names:
             email = name.lower().replace(" ", ".") + "@email.com"
             self.users.append(User(
-                role=UserRole.VOLUNTEER,
                 name=name,
                 email=email,
-                phone=f"555-{random.randint(1000, 9999)}"
+                phone=f"555-{random.randint(1000, 9999)}",
+                capabilities=UserCapabilities(is_volunteer=True),
+                password_hash=demo_password_hash,
+                email_verified=True,
             ))
-        
+
         # Donor organization contacts
         donor_contacts = [
-            "Patricia Adams", "Mark Thompson", "Rebecca Lewis", 
+            "Patricia Adams", "Mark Thompson", "Rebecca Lewis",
             "Anthony Garcia", "Michelle Moore"
         ]
-        
+
         for name in donor_contacts:
             email = name.lower().replace(" ", ".") + "@restaurant.com"
             self.users.append(User(
-                role=UserRole.DONOR,
                 name=name,
                 email=email,
-                phone=f"555-{random.randint(2000, 2999)}"
+                phone=f"555-{random.randint(2000, 2999)}",
+                capabilities=UserCapabilities(is_donor=True),
+                password_hash=demo_password_hash,
+                email_verified=True,
             ))
     
     def _generate_organizations(self) -> None:
@@ -282,7 +310,7 @@ class SeedDataGenerator:
     
     def _generate_volunteers(self) -> None:
         """Generate volunteer data."""
-        volunteer_users = [u for u in self.users if u.role == UserRole.VOLUNTEER]
+        volunteer_users = [u for u in self.users if u.capabilities.is_volunteer]
         
         for i, user in enumerate(volunteer_users):
             # Create varied volunteer profiles
@@ -348,7 +376,11 @@ class SeedDataGenerator:
                 reliability_score=random.uniform(0.7, 1.0),
                 availability_status="available",
                 notification_status="reachable",
-                current_task_count=random.randint(0, 2),
+                # Always 0 at seed time - this now tracks real active
+                # assignments (see CoordinationService._bind_volunteer), so a
+                # fabricated nonzero starting count would falsely block
+                # otherwise-idle volunteers from being matched.
+                current_task_count=0,
                 preferred_delivery_types=random.choice([
                     ["prepared_meals"],
                     ["fresh_produce"], 

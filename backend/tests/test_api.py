@@ -9,15 +9,25 @@ from fastapi.testclient import TestClient
 
 from src.main import app
 from src.services.coordination import get_coordination_service
+from src.services.seed_data import DEFAULT_DEMO_PASSWORD
 
 
 @pytest.fixture
 def client():
-    """Fresh coordination state per test, exercised through the real API."""
+    """Fresh coordination state per test, exercised through the real API,
+    authenticated as the seeded admin (a superset of coordinator access) so
+    the coordinator-gated endpoints below behave like a logged-in operator."""
 
     service = get_coordination_service()
     service.reset()
-    return TestClient(app)
+    test_client = TestClient(app)
+    login = test_client.post(
+        "/api/auth/login",
+        json={"email": "admin@neighbornet.org", "password": DEFAULT_DEMO_PASSWORD},
+    )
+    assert login.status_code == 200, login.text
+    test_client.headers["Authorization"] = f"Bearer {login.json()['access_token']}"
+    return test_client
 
 
 def _create_flood_disaster(client: TestClient) -> str:

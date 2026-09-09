@@ -28,7 +28,7 @@ def run_demo() -> dict:
 
     normal = orchestrator.run_normal_mode()
     disaster_id = "disaster_flood_zone_b"
-    disaster = orchestrator.run_disaster_mode(disaster_id)
+    disaster = orchestrator.run_disaster_mode(disaster_id, simulate_responses=True)
 
     assigned_disaster_tasks = [
         task
