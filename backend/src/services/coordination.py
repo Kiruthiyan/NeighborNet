@@ -128,7 +128,42 @@ class CoordinationService:
         self.state.invitations = [
             Invitation.model_validate(item) for item in self.store.scan_all(TABLE_INVITATIONS)
         ]
+        self._backfill_legacy_auth_fields(seed)
         return True
+
+    def _backfill_legacy_auth_fields(self, seed: Dict[str, list]) -> None:
+        """One-time migration for a shared DynamoDB table seeded before
+        authentication existed: those records have no password_hash and no
+        admin account at all. Patches auth fields onto matching seed users
+        (matched by email) and adds the seed admin if missing entirely -
+        idempotent, and never touches a real user who already has a
+        password_hash (i.e. anyone who signed up through /api/auth/signup)."""
+
+        seed_by_email = {u.email: u for u in seed["users"] if u.email}
+        existing_emails = {u.email for u in self.state.users if u.email}
+        patched = False
+
+        for user in self.state.users:
+            if user.password_hash or not user.email:
+                continue
+            seed_user = seed_by_email.get(user.email)
+            if seed_user is None:
+                continue
+            user.account_type = seed_user.account_type
+            user.capabilities = seed_user.capabilities
+            user.password_hash = seed_user.password_hash
+            user.email_verified = seed_user.email_verified
+            self._persist(TABLE_USERS, user)
+            patched = True
+
+        seed_admin = next((u for u in seed["users"] if u.is_admin), None)
+        if seed_admin is not None and seed_admin.email not in existing_emails:
+            self.state.users.append(seed_admin)
+            self._persist(TABLE_USERS, seed_admin)
+            patched = True
+
+        if patched:
+            logger.info("backfilled_legacy_user_auth_fields", table=TABLE_USERS)
 
     def _persist(self, table_name: str, model) -> None:
         """Write-through one model to the shared DynamoDB table, if enabled."""

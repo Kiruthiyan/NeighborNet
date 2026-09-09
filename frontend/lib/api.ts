@@ -540,18 +540,13 @@ export interface AgentInstructionResult {
   response: string;
 }
 
-export async function instructAgent(instruction: string): Promise<AgentInstructionResult> {
-  const response = await fetch(`${API_BASE_URL}/agent/instruct`, {
+export function instructAgent(instruction: string): Promise<AgentInstructionResult> {
+  // Coordinator-gated on the backend (see require_coordinator on
+  // /api/agent router) - uses the strict `request` helper so the auth
+  // token is attached and a 403 surfaces as a real error instead of
+  // silently degrading.
+  return request<AgentInstructionResult>("/agent/instruct", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ instruction }),
-    cache: "no-store"
+    body: JSON.stringify({ instruction })
   });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const detail =
-      typeof payload?.error === "string" ? payload.error : `Agent call failed: ${response.status}`;
-    throw new Error(detail);
-  }
-  return payload as AgentInstructionResult;
 }

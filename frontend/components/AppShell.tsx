@@ -65,7 +65,8 @@ export function AppShell({
   children,
   title,
   description,
-  requireAdmin = false
+  requireAdmin = false,
+  requireCoordinator = false
 }: {
   children: ReactNode;
   title: string;
@@ -74,20 +75,29 @@ export function AppShell({
    * sidebar already hides these links but a direct URL visit still needs
    * enforcing (the backend enforces it regardless either way). */
   requireAdmin?: boolean;
+  /** Same idea for pages only coordinators (or admins) should reach, e.g.
+   * the Agent Console - its backend call is coordinator-gated too. */
+  requireCoordinator?: boolean;
 }) {
   const { user, loading, logout } = useAuth();
   const router = useRouter();
+  const blockedByRole =
+    !!user && ((requireAdmin && !user.is_admin) || (requireCoordinator && !user.is_coordinator));
 
   useEffect(() => {
     if (loading) return;
     if (!user) {
-      router.replace("/login");
-    } else if (requireAdmin && !user.is_admin) {
+      // Same destination as the logout button below - if both fire (logout
+      // sets user to null, which re-runs this effect on the page being
+      // navigated away from, racing the button's own router.push), they
+      // agree on where to land instead of fighting over /login vs /.
+      router.replace("/");
+    } else if (blockedByRole) {
       router.replace("/dashboard");
     }
-  }, [loading, user, requireAdmin, router]);
+  }, [loading, user, blockedByRole, router]);
 
-  if (loading || !user || (requireAdmin && !user.is_admin)) {
+  if (loading || !user || blockedByRole) {
     return (
       <main className="grid min-h-screen place-items-center bg-mist text-sm text-slate-500">
         Loading…
