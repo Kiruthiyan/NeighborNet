@@ -37,7 +37,8 @@ This file additionally tracks the live, prioritized remaining work for the
 
 ## Nice-to-have — only if time remains
 
-- [ ] Minimal auth (coordinator vs. volunteer roles) — currently no login/permission enforcement anywhere
+- [x] Auth system: signup/login (JWT), self-service donor/volunteer toggle, admin-granted coordinator, admin panel (user CRUD + email invitations). See `docs/AUTH_PLAN.md`. Demo login: `admin@neighbornet.org` / `ChangeMe123!` (same password for every seeded demo account — real signups set their own).
+- [ ] Wire real invitation email delivery (SES/SNS) — the admin panel currently generates a signup link to copy/share manually instead of sending it
 - [ ] Deeper constraint validation polish (dietary/allergen edge cases, route safety)
 - [ ] 100+ scenario evaluation suite (explicitly out of scope for the demo per `docs/EVALUATION_PLAN.md`)
 

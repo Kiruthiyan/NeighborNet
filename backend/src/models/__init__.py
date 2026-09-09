@@ -1,7 +1,8 @@
 """Data models package for NeighborNet Resilience."""
 
 from .base import BaseModel, TimestampedModel
-from .users import User, UserRole
+from .users import User, AccountType, UserCapabilities
+from .invitations import Invitation, InvitationStatus
 from .organizations import Organization, OrganizationType, Location, OperatingHours
 from .inventory import Inventory, InventoryBatch, ResourceType, InventoryStatus, DietaryMetadata
 from .requests import Request, RequestStatus, UrgencyLevel, DeliveryWindow
@@ -21,8 +22,11 @@ __all__ = [
     "TimestampedModel",
     
     # User management
-    "User", 
-    "UserRole",
+    "User",
+    "AccountType",
+    "UserCapabilities",
+    "Invitation",
+    "InvitationStatus",
     
     # Organizations
     "Organization",

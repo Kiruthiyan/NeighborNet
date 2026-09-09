@@ -8,7 +8,10 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, List, Optional
 
+import structlog
+
 from src.engines import PlanningEngine, RecoveryEngine
+from src.services.database import get_database_service
 from src.models import (
     CoordinationTask,
     Decision,
@@ -17,6 +20,7 @@ from src.models import (
     DisasterNeed,
     Event,
     EventType,
+    Invitation,
     InventoryBatch,
     OperatingMode,
     Request,
@@ -38,6 +42,9 @@ TABLE_TASKS = "Tasks"
 TABLE_DECISIONS = "Decisions"
 TABLE_VOLUNTEERS = "Volunteers"
 TABLE_USERS = "Users"
+TABLE_INVITATIONS = "Invitations"
+
+logger = structlog.get_logger(__name__)
 
 
 @dataclass
@@ -54,6 +61,7 @@ class CoordinationState:
     tasks: List[CoordinationTask] = field(default_factory=list)
     decisions: List[Decision] = field(default_factory=list)
     events: List[Event] = field(default_factory=list)
+    invitations: List[Invitation] = field(default_factory=list)
 
 
 class CoordinationService:
@@ -117,12 +125,71 @@ class CoordinationService:
         self.state.decisions = [
             Decision.model_validate(item) for item in self.store.scan_all(TABLE_DECISIONS)
         ]
+        self.state.invitations = [
+            Invitation.model_validate(item) for item in self.store.scan_all(TABLE_INVITATIONS)
+        ]
         return True
 
     def _persist(self, table_name: str, model) -> None:
         """Write-through one model to the shared DynamoDB table, if enabled."""
 
         self.store.put(table_name, model.model_dump(mode="json"))
+
+    # -- User & invitation management ------------------------------------
+
+    def get_user_by_email(self, email: str) -> Optional[User]:
+        email_lower = email.strip().lower()
+        return next(
+            (u for u in self.state.users if (u.email or "").strip().lower() == email_lower),
+            None,
+        )
+
+    def get_user(self, user_id: str) -> Optional[User]:
+        return next((u for u in self.state.users if u.user_id == user_id), None)
+
+    def create_user(self, user: User) -> User:
+        self.state.users.append(user)
+        self._persist(TABLE_USERS, user)
+        return user
+
+    def update_user(self, user: User) -> User:
+        user.update_timestamp()
+        for index, existing in enumerate(self.state.users):
+            if existing.user_id == user.user_id:
+                self.state.users[index] = user
+                break
+        self._persist(TABLE_USERS, user)
+        return user
+
+    def delete_user(self, user_id: str) -> bool:
+        before = len(self.state.users)
+        self.state.users = [u for u in self.state.users if u.user_id != user_id]
+        deleted = len(self.state.users) < before
+        if deleted and self.store.enabled:
+            try:
+                get_database_service().resource.Table(TABLE_USERS).delete_item(
+                    Key={"user_id": user_id}
+                )
+            except Exception as exc:  # pragma: no cover - depends on live AWS
+                logger.warning("dynamodb_delete_failed", table=TABLE_USERS, error=str(exc))
+        return deleted
+
+    def create_invitation(self, invitation: Invitation) -> Invitation:
+        self.state.invitations.append(invitation)
+        self._persist(TABLE_INVITATIONS, invitation)
+        return invitation
+
+    def get_invitation_by_token(self, token: str) -> Optional[Invitation]:
+        return next((i for i in self.state.invitations if i.token == token), None)
+
+    def update_invitation(self, invitation: Invitation) -> Invitation:
+        invitation.update_timestamp()
+        for index, existing in enumerate(self.state.invitations):
+            if existing.invite_id == invitation.invite_id:
+                self.state.invitations[index] = invitation
+                break
+        self._persist(TABLE_INVITATIONS, invitation)
+        return invitation
 
     def summary_counts(self) -> Dict[str, int]:
         """Return entity counts for health/dashboard."""

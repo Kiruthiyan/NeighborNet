@@ -1,7 +1,9 @@
 """Human decision API."""
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from src.auth.dependencies import require_coordinator
+from src.models.users import User
 from src.services.coordination import get_coordination_service
 
 
@@ -30,22 +32,28 @@ async def get_decision(decision_id: str):
 
 
 @router.post("/{decision_id}/approve")
-async def approve_decision(decision_id: str, coordinator_id: str = "coordinator_demo"):
+async def approve_decision(
+    decision_id: str, coordinator: User = Depends(require_coordinator)
+):
     """Approve AMBER decision and allow workflow resume."""
 
     try:
-        return get_coordination_service().approve_decision(decision_id, coordinator_id)
+        return get_coordination_service().approve_decision(decision_id, coordinator.user_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/{decision_id}/reject")
-async def reject_decision(decision_id: str, reason: str = "Rejected by coordinator"):
+async def reject_decision(
+    decision_id: str,
+    reason: str = "Rejected by coordinator",
+    coordinator: User = Depends(require_coordinator),
+):
     """Reject decision."""
 
     try:
         decision = get_coordination_service().get_decision(decision_id)
-        decision.reject("coordinator_demo", "Coordinator", "coordinator", reason)
+        decision.reject(coordinator.user_id, coordinator.name, "coordinator", reason)
         return decision
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

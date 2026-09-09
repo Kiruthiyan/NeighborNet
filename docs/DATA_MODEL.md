@@ -25,13 +25,18 @@ UI may also show `Unassigned` and `Needs Attention` as board groupings derived f
 
 ## Core Entities
 
-Users:
+Users (see docs/AUTH_PLAN.md for the full rationale):
 
 - `user_id`
-- `role`: coordinator, volunteer, donor, recipient, administrator
-- `name`, `email`, `phone`
+- `account_type`: `admin` or `user` — `admin` is never created via signup, only seeded/set directly
+- `capabilities`: `is_donor`, `is_volunteer`, `is_coordinator` (independent flags on a `user` account; every `user` is implicitly a recipient too). `is_coordinator` is admin-granted only, not self-service
+- `name`, `email`, `phone`, `password_hash`
 - `permissions`
 - timestamps
+
+Invitations:
+
+- `invite_id`, `email`, `invited_by` (admin user_id), `token`, `granted_capabilities`, `status`, `expires_at`
 
 Organizations:
 

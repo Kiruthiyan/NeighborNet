@@ -16,6 +16,8 @@ from src.config import get_settings
 from src.services.database import initialize_database
 from src.services.logging import setup_logging
 
+from src.auth.router import router as auth_router
+from src.api.admin import router as admin_router
 from src.api.agent import router as agent_router
 from src.api.alerts import router as alerts_router
 from src.api.audit import router as audit_router
@@ -162,6 +164,8 @@ async def root():
     }
 
 
+app.include_router(auth_router, prefix="/api/auth", tags=["Auth"])
+app.include_router(admin_router, prefix="/api/admin", tags=["Admin"])
 app.include_router(agent_router, prefix="/api/agent", tags=["Agent"])
 app.include_router(dashboard_router, prefix="/api/dashboard", tags=["Dashboard"])
 app.include_router(resources_router, prefix="/api/inventory", tags=["Inventory"])

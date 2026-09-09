@@ -11,6 +11,7 @@ import {
   Users
 } from "lucide-react";
 import { AppShell } from "../components/AppShell";
+import { CapabilityPanel } from "../components/CapabilityPanel";
 import { Badge, EmptyState, Panel, StatCard, riskTone } from "../components/ui";
 import { label } from "../lib/format";
 import { getAlerts, getDashboardMetrics, getDisasterOverview, getTasks } from "../lib/api";
@@ -55,6 +56,10 @@ export default async function DashboardPage() {
         {metricCards.map(([title, value, Icon]) => (
           <StatCard icon={Icon} key={String(title)} title={title} value={value} />
         ))}
+      </section>
+
+      <section className="mt-5">
+        <CapabilityPanel />
       </section>
 
       <section className="mt-5 grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
