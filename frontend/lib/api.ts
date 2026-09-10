@@ -237,7 +237,7 @@ export function createDisaster(payload: Record<string, unknown>) {
   return apiPost<DisasterEvent>("/disasters", payload);
 }
 
-async function apiGet<T>(path: string, fallback: T): Promise<T> {
+export async function apiGet<T>(path: string, fallback: T): Promise<T> {
   try {
     const response = await fetch(`${API_BASE_URL}${path}`, {
       headers: authHeaders(),
@@ -253,7 +253,7 @@ async function apiGet<T>(path: string, fallback: T): Promise<T> {
   }
 }
 
-async function apiPost<T>(path: string, body?: unknown, fallback?: T): Promise<T> {
+export async function apiPost<T>(path: string, body?: unknown, fallback?: T): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
@@ -267,7 +267,7 @@ async function apiPost<T>(path: string, body?: unknown, fallback?: T): Promise<T
   return (await response.json()) as T;
 }
 
-async function apiPatch<T>(path: string, body: unknown, fallback?: T): Promise<T> {
+export async function apiPatch<T>(path: string, body: unknown, fallback?: T): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json", ...authHeaders() },
@@ -285,7 +285,7 @@ async function apiPatch<T>(path: string, body: unknown, fallback?: T): Promise<T
  * (which degrade quietly for public dashboard reads), these must surface
  * errors - a failed login or a 403 from an admin-only route needs to reach
  * the caller, not disappear into a fallback value. */
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+export async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...options,
     headers: {

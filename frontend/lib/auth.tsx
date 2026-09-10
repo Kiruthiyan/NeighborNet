@@ -14,7 +14,7 @@ import {
 interface AuthContextValue {
   user: UserProfile | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<UserProfile>;
   /** Returns the dev-only OTP when email delivery isn't configured (null
    * once real SMTP is set up, since it's actually emailed then). */
   signup: (
@@ -25,6 +25,7 @@ interface AuthContextValue {
   ) => Promise<string | null>;
   logout: () => void;
   setUser: (user: UserProfile) => void;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -32,6 +33,17 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const refreshUser = useCallback(async () => {
+    if (!getStoredToken()) return;
+    try {
+      const profile = await getMe();
+      setUser(profile);
+    } catch {
+      setStoredToken(null);
+      setUser(null);
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -60,6 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const result = await apiLogin(email, password);
     setStoredToken(result.access_token);
     setUser(result.user);
+    return result.user;
   }, []);
 
   const signup = useCallback(
@@ -78,7 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, signup, logout, setUser }}>
+    <AuthContext.Provider value={{ user, loading, login, signup, logout, setUser, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

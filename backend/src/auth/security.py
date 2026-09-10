@@ -14,7 +14,7 @@ from passlib.context import CryptContext
 
 from src.config import get_settings
 
-_pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+import bcrypt
 
 OTP_TTL_MINUTES = 10
 
@@ -34,13 +34,16 @@ def otp_expiry() -> datetime:
 
 def hash_password(plain_password: str) -> str:
     """Hash a plaintext password for storage."""
-    return _pwd_context.hash(plain_password)
+    pwd_bytes = plain_password.encode("utf-8")[:72]
+    return bcrypt.hashpw(pwd_bytes, bcrypt.gensalt()).decode("utf-8")
 
 
 def verify_password(plain_password: str, password_hash: str) -> bool:
     """Check a plaintext password against a stored hash."""
     try:
-        return _pwd_context.verify(plain_password, password_hash)
+        pwd_bytes = plain_password.encode("utf-8")[:72]
+        hash_bytes = password_hash.encode("utf-8")
+        return bcrypt.checkpw(pwd_bytes, hash_bytes)
     except (ValueError, TypeError):
         return False
 
