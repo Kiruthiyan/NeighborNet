@@ -659,7 +659,23 @@ class CoordinationService:
         if quantity <= 0:
             raise ValueError("quantity_requested must be positive")
 
-        required_by = payload.get("required_by") or (datetime.now() + timedelta(hours=24))
+        raw_required_by = payload.get("required_by")
+        if raw_required_by:
+            # Only validated here, at creation - not as a model-level
+            # validator, which would also re-run every time an old request
+            # is rehydrated from storage on startup. A request's deadline
+            # naturally moves into the past as real time passes (see
+            # Request.is_overdue); that's normal lifecycle, not corrupt
+            # data, and must never crash the whole service on load.
+            required_by = (
+                datetime.fromisoformat(str(raw_required_by))
+                if not isinstance(raw_required_by, datetime)
+                else raw_required_by
+            )
+            if required_by <= datetime.now():
+                raise ValueError("required_by must be in the future")
+        else:
+            required_by = datetime.now() + timedelta(hours=24)
         dietary_payload = payload.get("dietary_restrictions") or {}
         region = normalize_region(str(payload["region"])) if payload.get("region") else None
         request = Request(

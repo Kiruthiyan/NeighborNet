@@ -98,13 +98,6 @@ class Request(TimestampedModel):
             raise ValueError('Fulfilled quantity cannot exceed requested quantity')
         return v
     
-    @validator('required_by')
-    def validate_required_by(cls, v):
-        """Ensure required_by is in the future."""
-        if v <= datetime.now():
-            raise ValueError('Required by date must be in the future')
-        return v
-    
     @property
     def quantity_remaining(self) -> int:
         """Calculate remaining unfulfilled quantity."""
