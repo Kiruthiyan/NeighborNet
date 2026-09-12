@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Package, Search, Clock, MapPin } from "lucide-react";
 import { Panel, StatusBadge, EmptyState } from "../../../components/ui";
 import { apiGet } from "../../../lib/api";
+import { formatLocation } from "../../../lib/format";
 
 export default function OpsResourcesPage() {
   const [resources, setResources] = useState<any[]>([]);
@@ -84,7 +85,7 @@ export default function OpsResourcesPage() {
                     <td className="px-4 py-3 text-slate-300">{item.quantity} units</td>
                     <td className="px-4 py-3 text-slate-400 flex items-center gap-1">
                       <MapPin size={12} className="text-slate-500" />
-                      {item.pickup_location || "Central Hub"}
+                      {formatLocation(item.pickup_location, "Central Hub")}
                     </td>
                     <td className="px-4 py-3 text-slate-400 flex items-center gap-1">
                       <Clock size={12} className="text-slate-500" />

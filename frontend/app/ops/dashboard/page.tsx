@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { MetricCard, Panel, ModeSwitch, StatusBadge, EmptyState } from "../../../components/ui";
 import { apiGet } from "../../../lib/api";
+import { formatLocation } from "../../../lib/format";
 
 export default function OpsDashboardPage() {
   const [mode, setMode] = useState<"NORMAL" | "DISASTER">("NORMAL");
@@ -261,7 +262,7 @@ export default function OpsDashboardPage() {
                     <div>
                       <h4 className="text-xs font-bold text-slate-200">{tsk.task_type || "DELIVERY"}</h4>
                       <p className="text-[11px] text-slate-400 mt-0.5">
-                        Route: {tsk.pickup_location || "Hub"} → {tsk.delivery_location || "Destination"}
+                        Route: {formatLocation(tsk.pickup_location, "Hub")} → {formatLocation(tsk.delivery_location || tsk.destination, "Destination")}
                       </p>
                     </div>
                     <StatusBadge status={tsk.status || "ASSIGNED"} />

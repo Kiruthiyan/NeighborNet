@@ -30,12 +30,12 @@ import {
   Droplets,
   Utensils,
   Sparkles,
-  Tent,
-  Medkit
+  Tent
 } from "lucide-react";
 import { StatusBadge } from "../../../components/ui";
 import { useAuth } from "../../../lib/auth";
 import LocationPicker, { LocationResult } from "../../../components/LocationPicker";
+import { QRCodeDisplay } from "../../../components/QRCodeDisplay";
 
 // Types
 export type RequestMode = "NORMAL" | "DISASTER";
@@ -674,154 +674,189 @@ export default function CommunityRequestsPage() {
   };
 
   return (
-    <div className="space-y-6 animate-fade-in pb-16">
-      {/* 1. Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-200/80 pb-5">
-        <div>
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 text-white shadow-md shadow-emerald-600/20">
-              <HeartHandshake size={26} />
+    <div className="max-w-7xl mx-auto space-y-8 animate-fade-in pb-20 px-2 sm:px-4">
+      {/* 1. Hero Page Header */}
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-slate-900 via-emerald-950 to-slate-900 p-6 sm:p-8 text-white shadow-xl shadow-slate-900/10 border border-slate-800/80">
+        <div className="absolute -right-10 -bottom-10 w-72 h-72 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute left-1/3 -top-10 w-60 h-60 bg-teal-500/10 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+          <div className="flex items-start gap-4">
+            <div className="p-3.5 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-400 text-slate-950 shadow-lg shadow-emerald-500/25 shrink-0 ring-4 ring-white/10">
+              <HeartHandshake size={30} strokeWidth={2.2} />
             </div>
             <div>
-              <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-                My Requests
-              </h1>
-              <p className="text-xs sm:text-sm text-slate-500 mt-0.5 font-medium">
-                Create and track requests for food, essential supplies, and community assistance.
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <h1 className="text-2xl sm:text-4xl font-black tracking-tight text-white">
+                  My Assistance Requests
+                </h1>
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 backdrop-blur-md">
+                  <Sparkles size={13} className="text-emerald-400 animate-pulse" />
+                  Live Coordination
+                </span>
+              </div>
+              <p className="text-sm sm:text-base text-slate-300 mt-1.5 font-medium max-w-2xl leading-relaxed">
+                Submit and manage community assistance requests for food, clean water, shelter, and crisis relief.
               </p>
             </div>
           </div>
-        </div>
 
-        <button
-          onClick={() => {
-            setValidationDone(false);
-            setShowCreateModal(true);
-          }}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 text-xs sm:text-sm font-bold shadow-md shadow-emerald-600/25 transition-all hover:scale-[1.02] active:scale-[0.98] self-start sm:self-auto"
-        >
-          <Plus size={18} strokeWidth={2.5} />
-          Create Request
-        </button>
+          <button
+            onClick={() => {
+              setValidationDone(false);
+              setShowCreateModal(true);
+            }}
+            className="inline-flex items-center justify-center gap-2.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 px-6 py-3.5 text-sm sm:text-base font-extrabold shadow-xl shadow-emerald-500/25 transition-all hover:scale-[1.03] active:scale-[0.98] shrink-0 self-start md:self-auto cursor-pointer"
+          >
+            <Plus size={20} strokeWidth={2.8} />
+            <span>Create Request</span>
+          </button>
+        </div>
       </div>
 
-      {/* 2. Summary Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
-        <div className="rounded-2xl border border-slate-200/90 bg-white p-4.5 shadow-xs">
-          <div className="flex items-start justify-between">
+      {/* 2. Glassmorphic Summary Stats Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
+        {/* Active Card */}
+        <div className="relative overflow-hidden rounded-3xl border border-slate-200/80 bg-white/90 backdrop-blur-xl p-5 shadow-sm hover:shadow-md transition-all duration-300 group">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-teal-500/5 rounded-bl-full transition-transform group-hover:scale-110" />
+          <div className="flex items-center justify-between relative z-10">
             <div>
-              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
                 Active Requests
               </p>
-              <div className="mt-1.5 text-3xl font-extrabold tracking-tight text-slate-900">
+              <div className="mt-2 text-3xl sm:text-4xl font-black tracking-tight text-slate-900">
                 {summaryCounts.active}
               </div>
-              <p className="mt-1 text-xs text-slate-500">Currently active in system</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">Currently active in system</p>
             </div>
-            <div className="rounded-xl border border-teal-100 bg-teal-50 p-2 text-teal-600">
-              <Package size={20} />
+            <div className="rounded-2xl border border-teal-100 bg-teal-50/80 p-3.5 text-teal-600 shadow-inner group-hover:scale-110 transition-transform">
+              <Package size={24} strokeWidth={2} />
             </div>
           </div>
         </div>
 
-        <div className="rounded-2xl border border-slate-200/90 bg-white p-4.5 shadow-xs">
-          <div className="flex items-start justify-between">
+        {/* Pending Card */}
+        <div className="relative overflow-hidden rounded-3xl border border-amber-200/80 bg-gradient-to-br from-white via-white to-amber-50/30 backdrop-blur-xl p-5 shadow-sm hover:shadow-md transition-all duration-300 group">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/10 rounded-bl-full transition-transform group-hover:scale-110" />
+          <div className="flex items-center justify-between relative z-10">
             <div>
-              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              <p className="text-xs font-bold uppercase tracking-wider text-amber-600/90">
                 Pending Matching
               </p>
-              <div className="mt-1.5 text-3xl font-extrabold tracking-tight text-amber-600">
+              <div className="mt-2 text-3xl sm:text-4xl font-black tracking-tight text-amber-600">
                 {summaryCounts.pending}
               </div>
-              <p className="mt-1 text-xs text-slate-500">Evaluating inventory & depots</p>
+              <p className="mt-1 text-xs font-semibold text-amber-700/70">Evaluating inventory & depots</p>
             </div>
-            <div className="rounded-xl border border-amber-100 bg-amber-50 p-2 text-amber-600">
-              <Clock size={20} />
+            <div className="rounded-2xl border border-amber-200 bg-amber-100/80 p-3.5 text-amber-700 shadow-inner group-hover:scale-110 transition-transform">
+              <Clock size={24} strokeWidth={2} />
             </div>
           </div>
         </div>
 
-        <div className="rounded-2xl border border-slate-200/90 bg-white p-4.5 shadow-xs">
-          <div className="flex items-start justify-between">
+        {/* In Progress Card */}
+        <div className="relative overflow-hidden rounded-3xl border border-sky-200/80 bg-gradient-to-br from-white via-white to-sky-50/30 backdrop-blur-xl p-5 shadow-sm hover:shadow-md transition-all duration-300 group">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-sky-500/10 rounded-bl-full transition-transform group-hover:scale-110" />
+          <div className="flex items-center justify-between relative z-10">
             <div>
-              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              <p className="text-xs font-bold uppercase tracking-wider text-sky-600/90">
                 In Progress
               </p>
-              <div className="mt-1.5 text-3xl font-extrabold tracking-tight text-sky-600">
+              <div className="mt-2 text-3xl sm:text-4xl font-black tracking-tight text-sky-600">
                 {summaryCounts.inProgress}
               </div>
-              <p className="mt-1 text-xs text-slate-500">Volunteers dispatched</p>
+              <p className="mt-1 text-xs font-semibold text-sky-700/70">Volunteers dispatched</p>
             </div>
-            <div className="rounded-xl border border-sky-100 bg-sky-50 p-2 text-sky-600">
-              <Navigation size={20} />
+            <div className="rounded-2xl border border-sky-200 bg-sky-100/80 p-3.5 text-sky-700 shadow-inner group-hover:scale-110 transition-transform">
+              <Navigation size={24} strokeWidth={2} />
             </div>
           </div>
         </div>
 
-        <div className="rounded-2xl border border-slate-200/90 bg-white p-4.5 shadow-xs">
-          <div className="flex items-start justify-between">
+        {/* Completed Card */}
+        <div className="relative overflow-hidden rounded-3xl border border-emerald-200/80 bg-gradient-to-br from-white via-white to-emerald-50/30 backdrop-blur-xl p-5 shadow-sm hover:shadow-md transition-all duration-300 group">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/10 rounded-bl-full transition-transform group-hover:scale-110" />
+          <div className="flex items-center justify-between relative z-10">
             <div>
-              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              <p className="text-xs font-bold uppercase tracking-wider text-emerald-600/90">
                 Completed
               </p>
-              <div className="mt-1.5 text-3xl font-extrabold tracking-tight text-emerald-600">
+              <div className="mt-2 text-3xl sm:text-4xl font-black tracking-tight text-emerald-600">
                 {summaryCounts.completed}
               </div>
-              <p className="mt-1 text-xs text-slate-500">Successfully fulfilled</p>
+              <p className="mt-1 text-xs font-semibold text-emerald-700/70">Successfully fulfilled</p>
             </div>
-            <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-2 text-emerald-600">
-              <CheckCircle2 size={20} />
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-100/80 p-3.5 text-emerald-700 shadow-inner group-hover:scale-110 transition-transform">
+              <CheckCircle2 size={24} strokeWidth={2} />
             </div>
           </div>
         </div>
       </div>
 
-      {/* 3. Filters & Search */}
-      <div className="rounded-2xl border border-slate-200/80 bg-white p-3.5 shadow-xs">
-        <div className="flex flex-col md:flex-row items-center justify-between gap-3">
-          <div className="relative w-full md:w-80">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
+      {/* 3. Spacious Filter Toolbar & Search */}
+      <div className="rounded-3xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-sm space-y-4">
+        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4">
+          {/* Search Box */}
+          <div className="relative flex-1 min-w-[260px]">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
             <input
               type="text"
-              placeholder="Search by ID, resource, location..."
+              placeholder="Search by ID, resource name, zone, landmark..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full rounded-xl border border-slate-200 pl-9 pr-4 py-2 text-xs font-medium placeholder:text-slate-400 focus:border-emerald-500 focus:outline-none"
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50/60 pl-11 pr-4 py-3 text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 focus:outline-none transition-all"
             />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-200/60"
+              >
+                <X size={14} />
+              </button>
+            )}
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
-            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl text-xs">
+          {/* Controls Group */}
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Mode Selector Tabs */}
+            <div className="flex items-center gap-1 bg-slate-100/90 p-1.5 rounded-2xl text-xs font-bold border border-slate-200/60">
               <button
                 onClick={() => setModeFilter("ALL")}
-                className={`px-3 py-1 rounded-lg font-semibold transition-all ${
-                  modeFilter === "ALL" ? "bg-white text-slate-900 shadow-xs" : "text-slate-500 hover:text-slate-800"
+                className={`px-3.5 py-1.5 rounded-xl font-bold transition-all ${
+                  modeFilter === "ALL"
+                    ? "bg-white text-slate-900 shadow-xs"
+                    : "text-slate-500 hover:text-slate-800"
                 }`}
               >
                 All Modes
               </button>
               <button
                 onClick={() => setModeFilter("NORMAL")}
-                className={`px-3 py-1 rounded-lg font-semibold transition-all ${
-                  modeFilter === "NORMAL" ? "bg-white text-emerald-700 shadow-xs" : "text-slate-500 hover:text-slate-800"
+                className={`px-3.5 py-1.5 rounded-xl font-bold transition-all ${
+                  modeFilter === "NORMAL"
+                    ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/20"
+                    : "text-slate-500 hover:text-slate-800"
                 }`}
               >
                 Normal
               </button>
               <button
                 onClick={() => setModeFilter("DISASTER")}
-                className={`px-3 py-1 rounded-lg font-semibold transition-all ${
-                  modeFilter === "DISASTER" ? "bg-white text-rose-700 shadow-xs" : "text-slate-500 hover:text-slate-800"
+                className={`px-3.5 py-1.5 rounded-xl font-bold transition-all ${
+                  modeFilter === "DISASTER"
+                    ? "bg-rose-600 text-white shadow-md shadow-rose-600/20"
+                    : "text-slate-500 hover:text-slate-800"
                 }`}
               >
                 Disaster
               </button>
             </div>
 
+            {/* Urgency Filter */}
             <select
               value={urgencyFilter}
               onChange={(e) => setUrgencyFilter(e.target.value)}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 focus:border-emerald-500 focus:outline-none"
+              className="rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-2.5 text-xs font-bold text-slate-700 focus:bg-white focus:border-emerald-500 focus:outline-none transition-all cursor-pointer"
             >
               <option value="ALL">All Urgencies</option>
               <option value="CRITICAL">🔴 Critical</option>
@@ -830,10 +865,11 @@ export default function CommunityRequestsPage() {
               <option value="LOW">🟢 Low</option>
             </select>
 
+            {/* Status Filter */}
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 focus:border-emerald-500 focus:outline-none"
+              className="rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-2.5 text-xs font-bold text-slate-700 focus:bg-white focus:border-emerald-500 focus:outline-none transition-all cursor-pointer"
             >
               <option value="ALL">All Statuses</option>
               <option value="PENDING">Pending Matching</option>
@@ -843,103 +879,138 @@ export default function CommunityRequestsPage() {
               <option value="CANCELLED">Cancelled</option>
             </select>
 
-            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl text-xs ml-auto">
+            {/* View Mode Toggle */}
+            <div className="flex items-center gap-1 bg-slate-100/90 p-1.5 rounded-2xl border border-slate-200/60 ml-auto">
               <button
                 onClick={() => setViewMode("CARDS")}
-                className={`p-1.5 rounded-lg transition-all ${
-                  viewMode === "CARDS" ? "bg-white text-slate-900 shadow-xs" : "text-slate-500 hover:text-slate-800"
+                className={`p-2 rounded-xl transition-all ${
+                  viewMode === "CARDS"
+                    ? "bg-white text-slate-900 shadow-xs"
+                    : "text-slate-400 hover:text-slate-700"
                 }`}
-                title="Card Grid View"
+                title="Grid Cards View"
               >
-                <LayoutGrid size={15} />
+                <LayoutGrid size={17} />
               </button>
               <button
                 onClick={() => setViewMode("TABLE")}
-                className={`p-1.5 rounded-lg transition-all ${
-                  viewMode === "TABLE" ? "bg-white text-slate-900 shadow-xs" : "text-slate-500 hover:text-slate-800"
+                className={`p-2 rounded-xl transition-all ${
+                  viewMode === "TABLE"
+                    ? "bg-white text-slate-900 shadow-xs"
+                    : "text-slate-400 hover:text-slate-700"
                 }`}
                 title="Table View"
               >
-                <ListFilter size={15} />
+                <ListFilter size={17} />
               </button>
             </div>
           </div>
         </div>
       </div>
 
-      {/* 4. Requests List: Cards View */}
+      {/* 4. Requests Presentation */}
       {filteredRequests.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/70 p-12 text-center">
-          <div className="mx-auto w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400 mb-3">
-            <HeartHandshake size={24} />
+        <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50/80 p-16 text-center shadow-inner">
+          <div className="mx-auto w-16 h-16 rounded-3xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600 mb-4 shadow-sm">
+            <HeartHandshake size={32} />
           </div>
-          <h3 className="text-base font-bold text-slate-800">No requests match your filter</h3>
-          <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-            Try adjusting your search query or create a new community assistance request.
+          <h3 className="text-lg font-extrabold text-slate-900">No requests found</h3>
+          <p className="text-sm text-slate-500 mt-1.5 max-w-md mx-auto font-medium">
+            Try adjusting your search criteria or create a new assistance request for your neighborhood.
           </p>
+          <button
+            onClick={() => {
+              setSearchQuery("");
+              setModeFilter("ALL");
+              setStatusFilter("ALL");
+              setUrgencyFilter("ALL");
+            }}
+            className="mt-5 inline-flex items-center gap-2 text-xs font-extrabold text-emerald-700 hover:text-emerald-800 underline"
+          >
+            Reset all filters
+          </button>
         </div>
       ) : viewMode === "CARDS" ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        /* Spacious Grid View */
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {filteredRequests.map((req) => (
             <div
               key={req.id || req.request_id}
-              className="group relative rounded-2xl border border-slate-200/90 bg-white p-5 shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:border-emerald-200 flex flex-col justify-between"
+              className="group relative rounded-3xl border border-slate-200/90 bg-white p-6 shadow-sm hover:shadow-xl hover:shadow-emerald-500/5 hover:border-emerald-400/60 transition-all duration-300 flex flex-col justify-between"
             >
               <div>
-                {/* Card Top Row */}
-                <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3 mb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs font-extrabold px-2.5 py-0.5 rounded-lg bg-slate-100 text-slate-800 border border-slate-200">
+                {/* Header Row */}
+                <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-4 mb-4">
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <span className="font-mono text-xs font-black px-3 py-1 rounded-xl bg-slate-900 text-white shadow-xs">
                       #{req.request_id}
                     </span>
                     {req.mode === "DISASTER" ? (
-                      <span className="inline-flex items-center gap-1 rounded-md bg-rose-50 border border-rose-200 px-2 py-0.5 text-[11px] font-bold text-rose-700">
-                        <Flame size={12} className="text-rose-600" />
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-50 border border-rose-200/90 px-3 py-1 text-xs font-extrabold text-rose-700">
+                        <Flame size={14} className="text-rose-600 animate-pulse" />
                         {req.disaster_name || "Disaster Mode"}
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[11px] font-bold text-emerald-700">
-                        Normal Mode
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 border border-emerald-200/90 px-3 py-1 text-xs font-extrabold text-emerald-700">
+                        Normal Community
                       </span>
                     )}
                   </div>
                   <div>{renderUrgencyBadge(req.urgency)}</div>
                 </div>
 
-                {/* Resource Title & Quantity */}
-                <div className="mb-3">
-                  <div className="flex items-baseline justify-between">
-                    <h3 className="text-base font-bold text-slate-900 group-hover:text-emerald-700 transition-colors">
+                {/* Main Content */}
+                <div className="space-y-3 mb-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <h3 className="text-lg font-extrabold text-slate-900 group-hover:text-emerald-700 transition-colors leading-snug">
                       {req.resource_name}
                     </h3>
-                    <span className="text-xs font-extrabold text-slate-800 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded-lg">
-                      {req.quantity} {req.unit} · {req.people_affected} people
+                    <span className="shrink-0 text-xs font-black text-slate-900 bg-slate-100 border border-slate-200 px-3 py-1.5 rounded-xl">
+                      {req.quantity} {req.unit}
                     </span>
                   </div>
-                  <p className="text-xs text-slate-600 mt-1 line-clamp-2">{req.reason}</p>
+
+                  <p className="text-xs sm:text-sm text-slate-600 leading-relaxed line-clamp-2">
+                    {req.reason}
+                  </p>
+
+                  {/* Impact & People Pill */}
+                  <div className="flex items-center gap-4 text-xs text-slate-500 font-semibold pt-1">
+                    <span className="inline-flex items-center gap-1.5 text-slate-700">
+                      <Users size={15} className="text-emerald-600" />
+                      <strong>{req.people_affected}</strong> people affected
+                    </span>
+                    <span className="text-slate-300">•</span>
+                    <span className="inline-flex items-center gap-1.5 text-slate-700">
+                      <Package size={15} className="text-teal-600" />
+                      Category: <strong>{req.type}</strong>
+                    </span>
+                  </div>
                 </div>
 
-                {/* Location */}
-                <div className="mb-3 rounded-xl bg-slate-50/90 border border-slate-200/60 p-2.5 text-xs text-slate-600 flex items-start gap-2">
-                  <MapPin size={15} className="text-emerald-600 shrink-0 mt-0.5" />
-                  <div>
-                    <div className="font-semibold text-slate-800">{req.affected_location}</div>
-                    <div className="text-[11px] text-slate-500 mt-0.5">{req.address_or_landmark}</div>
+                {/* Location Box */}
+                <div className="mb-5 rounded-2xl bg-slate-50/90 border border-slate-200/70 p-3.5 text-xs text-slate-600 flex items-start gap-3">
+                  <div className="p-2 rounded-xl bg-emerald-100/70 text-emerald-700 shrink-0 mt-0.5">
+                    <MapPin size={16} strokeWidth={2.2} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-extrabold text-slate-900 truncate">{req.affected_location}</div>
+                    <div className="text-xs text-slate-500 mt-0.5 font-medium truncate">{req.address_or_landmark}</div>
                     {req.is_in_disaster_zone && (
-                      <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-bold text-rose-600">
-                        <AlertTriangle size={11} /> Inside Active Disaster Zone
-                      </span>
+                      <div className="inline-flex items-center gap-1.5 mt-2 text-[11px] font-extrabold text-rose-700 bg-rose-100/80 px-2.5 py-0.5 rounded-md border border-rose-200">
+                        <AlertTriangle size={12} className="text-rose-600" /> Inside Active Disaster Zone
+                      </div>
                     )}
                   </div>
                 </div>
 
-                {/* Needed By & Status */}
+                {/* Status & Timing */}
                 <div className="flex items-center justify-between text-xs pt-1 mb-2">
-                  <div className="flex items-center gap-1 text-slate-500">
-                    <Clock size={13} className="text-slate-400" />
-                    <span>Needed by:</span>
-                    <strong className="text-slate-700">
-                      {req.needed_by_date}, {req.needed_by_time}
+                  <div className="flex items-center gap-1.5 text-slate-500 font-medium">
+                    <Clock size={14} className="text-slate-400 shrink-0" />
+                    <span>Needed:</span>
+                    <strong className="text-slate-800">
+                      {req.needed_by_date} {req.needed_by_time ? `(${req.needed_by_time})` : ""}
                     </strong>
                   </div>
                   <div>
@@ -961,13 +1032,13 @@ export default function CommunityRequestsPage() {
                 </div>
               </div>
 
-              {/* Bottom Actions */}
-              <div className="flex items-center justify-between border-t border-slate-100 pt-3 mt-2">
+              {/* Card Footer Actions */}
+              <div className="flex items-center justify-between border-t border-slate-100 pt-4 mt-4">
                 <button
                   onClick={() => setSelectedDetailRequest(req)}
-                  className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700 hover:text-emerald-800 hover:underline"
+                  className="inline-flex items-center gap-2 text-xs font-black text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-3.5 py-2 rounded-xl transition-colors cursor-pointer"
                 >
-                  <Eye size={13} /> View Details
+                  <Eye size={14} /> View Lifecycle Details
                 </button>
 
                 <div className="flex items-center gap-2">
@@ -975,15 +1046,15 @@ export default function CommunityRequestsPage() {
                     <>
                       <button
                         onClick={() => setEditingRequest({ ...req })}
-                        className="inline-flex items-center gap-1 text-xs font-semibold text-slate-600 hover:text-slate-900 px-2 py-1 rounded-md hover:bg-slate-100"
+                        className="inline-flex items-center gap-1 text-xs font-extrabold text-slate-600 hover:text-slate-900 px-3 py-1.5 rounded-xl hover:bg-slate-100 transition-colors"
                       >
-                        <Edit3 size={12} /> Edit
+                        <Edit3 size={13} /> Edit
                       </button>
                       <button
                         onClick={() => handleCancelRequest(req.request_id)}
-                        className="inline-flex items-center gap-1 text-xs font-semibold text-rose-600 hover:text-rose-700 px-2 py-1 rounded-md hover:bg-rose-50"
+                        className="inline-flex items-center gap-1 text-xs font-extrabold text-rose-600 hover:text-rose-700 px-3 py-1.5 rounded-xl hover:bg-rose-50 transition-colors"
                       >
-                        <Trash2 size={12} /> Cancel
+                        <Trash2 size={13} /> Cancel
                       </button>
                     </>
                   )}
@@ -993,379 +1064,430 @@ export default function CommunityRequestsPage() {
           ))}
         </div>
       ) : (
-        /* Responsive Table View */
-        <div className="overflow-x-auto rounded-2xl border border-slate-200/80 bg-white shadow-xs">
-          <table className="w-full min-w-max text-left text-xs">
-            <thead className="bg-slate-50/80 text-[11px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200/80">
-              <tr>
-                <th className="px-4 py-3">Request ID</th>
-                <th className="px-4 py-3">Type & Mode</th>
-                <th className="px-4 py-3">Resource & Quantity</th>
-                <th className="px-4 py-3">People</th>
-                <th className="px-4 py-3">Location</th>
-                <th className="px-4 py-3">Urgency</th>
-                <th className="px-4 py-3">Needed By</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filteredRequests.map((req) => (
-                <tr key={req.id || req.request_id} className="hover:bg-slate-50/80 transition-colors">
-                  <td className="px-4 py-3 font-mono font-bold text-slate-900">#{req.request_id}</td>
-                  <td className="px-4 py-3">
-                    <div className="font-semibold text-slate-900">{req.type}</div>
-                    <div className="text-[10px] text-slate-500">
-                      {req.mode === "DISASTER" ? req.disaster_name || "Disaster Mode" : "Normal Mode"}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="font-bold text-slate-900">{req.resource_name}</span>
-                    <div className="text-slate-500 text-[11px]">
-                      {req.quantity} {req.unit}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-slate-700 font-medium">{req.people_affected} people</td>
-                  <td className="px-4 py-3">
-                    <div className="font-medium text-slate-800">{req.affected_location}</div>
-                    <div className="text-[10px] text-slate-400 truncate max-w-[140px]">
-                      {req.address_or_landmark}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">{renderUrgencyBadge(req.urgency)}</td>
-                  <td className="px-4 py-3 text-slate-600 font-medium">
-                    {req.needed_by_date}, {req.needed_by_time}
-                  </td>
-                  <td className="px-4 py-3">
-                    <StatusBadge
-                      status={
-                        req.status === "PENDING"
-                          ? "Pending Matching"
-                          : req.status === "ASSIGNED"
-                          ? "Assigned"
-                          : req.status === "IN_PROGRESS"
-                          ? "In Progress"
-                          : req.status === "COMPLETED"
-                          ? "Completed"
-                          : req.status
-                      }
-                      pulse={req.status === "PENDING" || req.status === "IN_PROGRESS"}
-                    />
-                  </td>
-                  <td className="px-4 py-3 text-right space-x-2">
-                    <button
-                      onClick={() => setSelectedDetailRequest(req)}
-                      className="text-emerald-700 hover:text-emerald-800 font-bold text-xs hover:underline"
-                    >
-                      View
-                    </button>
-                    {req.status === "PENDING" && (
-                      <>
-                        <button
-                          onClick={() => setEditingRequest({ ...req })}
-                          className="text-slate-600 hover:text-slate-900 font-semibold text-xs hover:underline"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => handleCancelRequest(req.request_id)}
-                          className="text-rose-600 hover:text-rose-700 font-semibold text-xs hover:underline"
-                        >
-                          Cancel
-                        </button>
-                      </>
-                    )}
-                  </td>
+        /* Responsive Spacious Table View */
+        <div className="overflow-hidden rounded-3xl border border-slate-200/80 bg-white shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50/90 text-xs font-black uppercase tracking-wider text-slate-500 border-b border-slate-200/80">
+                <tr>
+                  <th className="px-6 py-4">Request ID</th>
+                  <th className="px-6 py-4">Type & Mode</th>
+                  <th className="px-6 py-4">Resource & Qty</th>
+                  <th className="px-6 py-4">People</th>
+                  <th className="px-6 py-4">Location</th>
+                  <th className="px-6 py-4">Urgency</th>
+                  <th className="px-6 py-4">Needed By</th>
+                  <th className="px-6 py-4">Status</th>
+                  <th className="px-6 py-4 text-right">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-100 font-medium">
+                {filteredRequests.map((req) => (
+                  <tr key={req.id || req.request_id} className="hover:bg-slate-50/80 transition-colors">
+                    <td className="px-6 py-4 font-mono font-black text-slate-900">#{req.request_id}</td>
+                    <td className="px-6 py-4">
+                      <div className="font-extrabold text-slate-900">{req.type}</div>
+                      <div className="text-[11px] text-slate-500 font-semibold">
+                        {req.mode === "DISASTER" ? req.disaster_name || "Disaster Mode" : "Normal Mode"}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="font-extrabold text-slate-900">{req.resource_name}</span>
+                      <div className="text-slate-500 text-xs font-semibold">
+                        {req.quantity} {req.unit}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-slate-700 font-extrabold">{req.people_affected} people</td>
+                    <td className="px-6 py-4">
+                      <div className="font-extrabold text-slate-900">{req.affected_location}</div>
+                      <div className="text-xs text-slate-400 truncate max-w-[160px]">
+                        {req.address_or_landmark}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">{renderUrgencyBadge(req.urgency)}</td>
+                    <td className="px-6 py-4 text-slate-700 font-semibold">
+                      {req.needed_by_date} {req.needed_by_time ? `(${req.needed_by_time})` : ""}
+                    </td>
+                    <td className="px-6 py-4">
+                      <StatusBadge
+                        status={
+                          req.status === "PENDING"
+                            ? "Pending Matching"
+                            : req.status === "ASSIGNED"
+                            ? "Assigned"
+                            : req.status === "IN_PROGRESS"
+                            ? "In Progress"
+                            : req.status === "COMPLETED"
+                            ? "Completed"
+                            : req.status
+                        }
+                        pulse={req.status === "PENDING" || req.status === "IN_PROGRESS"}
+                      />
+                    </td>
+                    <td className="px-6 py-4 text-right space-x-3">
+                      <button
+                        onClick={() => setSelectedDetailRequest(req)}
+                        className="text-emerald-700 hover:text-emerald-800 font-black text-xs hover:underline cursor-pointer"
+                      >
+                        Details
+                      </button>
+                      {req.status === "PENDING" && (
+                        <>
+                          <button
+                            onClick={() => setEditingRequest({ ...req })}
+                            className="text-slate-600 hover:text-slate-900 font-bold text-xs hover:underline cursor-pointer"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleCancelRequest(req.request_id)}
+                            className="text-rose-600 hover:text-rose-700 font-bold text-xs hover:underline cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                        </>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
       {/* ========================================================================= */}
-      {/* 5. STREAMLINED CREATE REQUEST MODAL (NO UNWANTED FLUFF - ONLY NEEDED FIELDS) */}
+      {/* 5. STREAMLINED COOL SCROLLING CREATE REQUEST MODAL                         */}
       {/* ========================================================================= */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-3 sm:p-4 overflow-hidden">
-          <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl border border-slate-100 overflow-hidden flex flex-col max-h-[92vh] animate-slide-up">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 backdrop-blur-md p-3 sm:p-4 overflow-hidden animate-fade-in">
+          <div className="w-full max-w-xl rounded-3xl bg-white shadow-2xl border border-slate-200/90 overflow-hidden flex flex-col max-h-[92vh] sm:max-h-[88vh] animate-slide-up my-auto">
             {/* Header */}
-            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3.5 bg-slate-50/80">
-              <div className="flex items-center gap-2.5">
-                <div className={`p-2 rounded-xl ${formMode === "DISASTER" ? "bg-rose-100 text-rose-700" : "bg-emerald-100 text-emerald-700"}`}>
-                  <HeartHandshake size={18} />
+            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 bg-gradient-to-r from-slate-50 via-white to-slate-50">
+              <div className="flex items-center gap-3">
+                <div className={`p-2.5 rounded-2xl ${formMode === "DISASTER" ? "bg-rose-100 text-rose-700 ring-4 ring-rose-500/10" : "bg-emerald-100 text-emerald-700 ring-4 ring-emerald-500/10"}`}>
+                  <HeartHandshake size={22} strokeWidth={2.2} />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-slate-900">Request Assistance</h3>
-                  <p className="text-[11px] text-slate-500">Quick form — submit in under 30 seconds</p>
+                  <h3 className="text-lg font-black text-slate-900 tracking-tight">Request Community Assistance</h3>
+                  <p className="text-xs text-slate-500 font-medium">Interactive request form — scroll for complete options</p>
                 </div>
               </div>
               <button
                 onClick={() => setShowCreateModal(false)}
-                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100"
+                className="text-slate-400 hover:text-slate-700 p-2 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
               >
-                <X size={17} />
+                <X size={20} />
               </button>
             </div>
 
-            {/* Modal Body — Lean 3-Step Emergency Form */}
-            <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 text-xs">
-              {/* Scrollable body */}
-              <div className="flex-1 overflow-y-auto min-h-0 p-5 space-y-4">
-
-              {/* Mode Toggle */}
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => { setFormMode("NORMAL"); setFormUrgency("MEDIUM"); setValidationDone(false); }}
-                  className={`py-2.5 px-3 rounded-xl border text-left font-bold transition-all ${
-                    formMode === "NORMAL"
-                      ? "border-emerald-600 bg-emerald-50 text-emerald-800 ring-1 ring-emerald-500"
-                      : "border-slate-200 text-slate-600 hover:bg-slate-50"
-                  }`}
+            {/* Sticky Form Section Quick Jump Bar */}
+            <div className="px-6 py-2.5 bg-slate-100/80 border-b border-slate-200/80 flex items-center justify-between gap-2 overflow-x-auto text-[11px] font-extrabold scrollbar-none">
+              <span className="text-slate-500 uppercase tracking-wider shrink-0">Quick Jump:</span>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <a
+                  href="#form-mode-section"
+                  className="px-2.5 py-1 rounded-lg bg-white text-slate-700 border border-slate-200 hover:bg-emerald-50 hover:text-emerald-700 transition-all"
                 >
-                  <div className="flex items-center justify-between">
-                    <span>Normal Request</span>
-                    {formMode === "NORMAL" && <CheckCircle2 size={15} className="text-emerald-600" />}
-                  </div>
-                  <p className="text-[10px] font-normal text-slate-400 mt-0.5">Everyday community help</p>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setFormMode("DISASTER"); setFormUrgency("CRITICAL"); setValidationDone(false); }}
-                  className={`py-2.5 px-3 rounded-xl border text-left font-bold transition-all ${
-                    formMode === "DISASTER"
-                      ? "border-rose-600 bg-rose-50 text-rose-800 ring-1 ring-rose-500"
-                      : "border-slate-200 text-slate-600 hover:bg-slate-50"
-                  }`}
+                  ⚡ Mode
+                </a>
+                <a
+                  href="#form-step-1"
+                  className="px-2.5 py-1 rounded-lg bg-white text-slate-700 border border-slate-200 hover:bg-emerald-50 hover:text-emerald-700 transition-all"
                 >
-                  <div className="flex items-center justify-between">
-                    <span className="flex items-center gap-1"><Flame size={13} className="text-rose-600" /> Emergency</span>
-                    {formMode === "DISASTER" && <CheckCircle2 size={15} className="text-rose-600" />}
-                  </div>
-                  <p className="text-[10px] font-normal text-slate-400 mt-0.5">Disaster / crisis situation</p>
-                </button>
+                  01 Items
+                </a>
+                <a
+                  href="#form-step-2"
+                  className="px-2.5 py-1 rounded-lg bg-white text-slate-700 border border-slate-200 hover:bg-emerald-50 hover:text-emerald-700 transition-all"
+                >
+                  02 Location Map
+                </a>
+                <a
+                  href="#form-step-3"
+                  className="px-2.5 py-1 rounded-lg bg-white text-slate-700 border border-slate-200 hover:bg-emerald-50 hover:text-emerald-700 transition-all"
+                >
+                  03 Urgency
+                </a>
               </div>
+            </div>
 
-              {/* 1-Click Disaster Quick Fill */}
-              {formMode === "DISASTER" && (
-                <div className="rounded-xl border border-rose-200 bg-rose-50/60 p-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-[11px] text-rose-900 flex items-center gap-1.5">
-                      <AlertTriangle size={13} className="text-rose-600" />
-                      Active: Flood – Zone B
-                    </span>
-                    <span className="text-[10px] font-semibold text-rose-700 bg-rose-100 px-2 py-0.5 rounded">Tap to auto-fill</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {ACTIVE_DISASTERS[0].neededRequests.map((needed, i) => (
-                      <button
-                        key={i}
-                        type="button"
-                        onClick={() => handleQuickFill(needed)}
-                        className="text-left p-2 rounded-lg border border-rose-200/90 bg-white hover:border-rose-400 hover:shadow-xs transition-all"
-                      >
-                        <div className="font-bold text-[11px] text-slate-900 truncate">{needed.title}</div>
-                        <div className="text-[10px] text-slate-400 mt-0.5">{needed.qty} {needed.unit} · {needed.people} people</div>
-                      </button>
-                    ))}
+            {/* Cool Scrolling Modal Body */}
+            <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 text-xs">
+              <div className="flex-1 overflow-y-auto cool-scrollbar scroll-smooth p-6 space-y-6 bg-slate-50/50">
+
+                {/* Mode Toggle Section */}
+                <div id="form-mode-section" className="space-y-2 scroll-mt-4">
+                  <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400">Request Operating Category</span>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => { setFormMode("NORMAL"); setFormUrgency("MEDIUM"); setValidationDone(false); }}
+                      className={`p-3.5 rounded-2xl border text-left font-extrabold transition-all cursor-pointer ${
+                        formMode === "NORMAL"
+                          ? "border-emerald-600 bg-emerald-50/90 text-emerald-900 ring-2 ring-emerald-500/20 shadow-xs"
+                          : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm">Normal Community Request</span>
+                        {formMode === "NORMAL" && <CheckCircle2 size={18} className="text-emerald-600" />}
+                      </div>
+                      <p className="text-xs font-medium text-slate-500 mt-1">Surplus match & standard community delivery</p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => { setFormMode("DISASTER"); setFormUrgency("CRITICAL"); setValidationDone(false); }}
+                      className={`p-3.5 rounded-2xl border text-left font-extrabold transition-all cursor-pointer ${
+                        formMode === "DISASTER"
+                          ? "border-rose-600 bg-rose-50/90 text-rose-900 ring-2 ring-rose-500/20 shadow-xs"
+                          : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm flex items-center gap-1.5"><Flame size={16} className="text-rose-600" /> Crisis Emergency</span>
+                        {formMode === "DISASTER" && <CheckCircle2 size={18} className="text-rose-600" />}
+                      </div>
+                      <p className="text-xs font-medium text-slate-500 mt-1">Disaster dispatch & urgent alert</p>
+                    </button>
                   </div>
                 </div>
-              )}
 
-              {/* Step 1: What do you need? */}
-              <div className="space-y-2.5">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">1 — What do you need?</p>
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="col-span-2 relative">
-                    <input
-                      ref={itemInputRef}
-                      type="text"
-                      value={itemQuery}
-                      onChange={(e) => handleItemQueryChange(e.target.value)}
-                      onFocus={() => setItemSuggestOpen(true)}
-                      onBlur={() => setTimeout(() => setItemSuggestOpen(false), 150)}
-                      placeholder="e.g. Drinking Water, Blankets, Meals…"
-                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-xs font-semibold focus:border-emerald-500 focus:outline-none placeholder:font-normal"
-                      required
-                      autoComplete="off"
-                    />
+                {/* 1-Click Disaster Quick Fill */}
+                {formMode === "DISASTER" && (
+                  <div className="rounded-2xl border border-rose-200 bg-gradient-to-r from-rose-50 via-white to-orange-50 p-4 space-y-3 shadow-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="font-extrabold text-xs text-rose-900 flex items-center gap-2">
+                        <AlertTriangle size={15} className="text-rose-600 animate-pulse" />
+                        Active Disaster: Flood – Zone B
+                      </span>
+                      <span className="text-[11px] font-extrabold text-rose-700 bg-white px-2.5 py-0.5 rounded-full border border-rose-200 shadow-2xs">1-Tap Auto Fill</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {ACTIVE_DISASTERS[0].neededRequests.map((needed, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => handleQuickFill(needed)}
+                          className="text-left p-2.5 rounded-xl border border-rose-200/90 bg-white hover:border-rose-400 hover:shadow-md transition-all cursor-pointer"
+                        >
+                          <div className="font-bold text-xs text-slate-900 truncate">{needed.title}</div>
+                          <div className="text-[11px] text-slate-500 mt-0.5">{needed.qty} {needed.unit} · {needed.people} people</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-                    {/* Autocomplete dropdown */}
-                    {itemSuggestOpen && filteredItems.length > 0 && (
-                      <div
-                        ref={itemDropdownRef}
-                        className="absolute top-full left-0 right-0 mt-1 z-50 rounded-xl border border-slate-200 bg-white shadow-xl overflow-hidden max-h-52 overflow-y-auto"
+                {/* Step 1 Card: What do you need? */}
+                <div id="form-step-1" className="rounded-2xl border border-slate-200/80 bg-white p-4.5 shadow-xs space-y-3.5 scroll-mt-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-emerald-100 text-emerald-800 font-black text-xs">01</span>
+                      <p className="text-xs font-black uppercase tracking-wider text-slate-700">What items or assistance are needed?</p>
+                    </div>
+                    <span className="text-[10px] font-extrabold text-slate-400">Autocomplete active</span>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="col-span-2 relative">
+                      <input
+                        ref={itemInputRef}
+                        type="text"
+                        value={itemQuery}
+                        onChange={(e) => handleItemQueryChange(e.target.value)}
+                        onFocus={() => setItemSuggestOpen(true)}
+                        onBlur={() => setTimeout(() => setItemSuggestOpen(false), 150)}
+                        placeholder="e.g. Drinking Water, Hot Meals, Tarpaulins..."
+                        className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-xs font-bold focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 focus:outline-none placeholder:font-medium shadow-2xs"
+                        required
+                        autoComplete="off"
+                      />
+
+                      {/* Autocomplete dropdown */}
+                      {itemSuggestOpen && filteredItems.length > 0 && (
+                        <div
+                          ref={itemDropdownRef}
+                          className="absolute top-full left-0 right-0 mt-1.5 z-50 rounded-2xl border border-slate-200 bg-white shadow-2xl overflow-hidden max-h-60 overflow-y-auto cool-scrollbar"
+                        >
+                          {(() => {
+                            const groups: Record<string, typeof ITEM_SUGGESTIONS> = {};
+                            filteredItems.forEach((item) => {
+                              if (!groups[item.category]) groups[item.category] = [];
+                              groups[item.category].push(item);
+                            });
+                            return Object.entries(groups).map(([cat, items]) => (
+                              <div key={cat}>
+                                <div className="px-4 py-1.5 text-[10px] font-black uppercase tracking-widest text-slate-400 bg-slate-50 border-b border-slate-100">{cat}</div>
+                                {items.map((item) => (
+                                  <button
+                                    key={item.label}
+                                    type="button"
+                                    onMouseDown={() => handleItemSelect(item)}
+                                    className="w-full text-left px-4 py-2.5 flex items-center gap-3 hover:bg-emerald-50 transition-colors border-b border-slate-50 last:border-0 cursor-pointer"
+                                  >
+                                    <span className="text-lg leading-none">{item.icon}</span>
+                                    <div>
+                                      <p className="text-xs font-bold text-slate-900">{item.label}</p>
+                                      <p className="text-[10px] text-slate-400 font-medium">Unit: {item.unit}</p>
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
+                            ));
+                          })()}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <input
+                        type="number"
+                        min="1"
+                        value={formQuantity}
+                        onChange={(e) => { setFormQuantity(Number(e.target.value)); setValidationDone(false); }}
+                        placeholder="Qty"
+                        className="w-full rounded-2xl border border-slate-300 bg-white px-3 py-3 text-xs font-bold text-slate-900 focus:border-emerald-500 focus:outline-none"
+                        required
+                      />
+                      <select
+                        value={formUnit}
+                        onChange={(e) => setFormUnit(e.target.value)}
+                        className="w-full rounded-2xl border border-slate-300 bg-white px-2 py-3 text-xs font-bold text-slate-900 focus:border-emerald-500 focus:outline-none cursor-pointer"
                       >
-                        {/* Group by category */}
-                        {(() => {
-                          const groups: Record<string, typeof ITEM_SUGGESTIONS> = {};
-                          filteredItems.forEach((item) => {
-                            if (!groups[item.category]) groups[item.category] = [];
-                            groups[item.category].push(item);
-                          });
-                          return Object.entries(groups).map(([cat, items]) => (
-                            <div key={cat}>
-                              <div className="px-3 py-1 text-[9px] font-extrabold uppercase tracking-widest text-slate-400 bg-slate-50 border-b border-slate-100">{cat}</div>
-                              {items.map((item) => (
-                                <button
-                                  key={item.label}
-                                  type="button"
-                                  onMouseDown={() => handleItemSelect(item)}
-                                  className="w-full text-left px-3 py-2 flex items-center gap-2.5 hover:bg-emerald-50 transition-colors border-b border-slate-50 last:border-0"
-                                >
-                                  <span className="text-base leading-none">{item.icon}</span>
-                                  <div>
-                                    <p className="text-xs font-semibold text-slate-800">{item.label}</p>
-                                    <p className="text-[10px] text-slate-400">Unit: {item.unit}</p>
-                                  </div>
-                                </button>
-                              ))}
-                            </div>
-                          ));
-                        })()}
-                      </div>
+                        <option value="Bottles">Btl</option>
+                        <option value="Packs">Packs</option>
+                        <option value="Boxes">Boxes</option>
+                        <option value="Meals">Meals</option>
+                        <option value="Kits">Kits</option>
+                        <option value="Tarps">Tarps</option>
+                        <option value="Kg">Kg</option>
+                        <option value="Units">Units</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Step 2 Card: Where is help required? */}
+                <div id="form-step-2" className="rounded-2xl border border-slate-200/80 bg-white p-4.5 shadow-xs space-y-3.5 scroll-mt-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-emerald-100 text-emerald-800 font-black text-xs">02</span>
+                      <p className="text-xs font-black uppercase tracking-wider text-slate-700">Where is help required?</p>
+                    </div>
+                    {formLocation ? (
+                      <span className="text-xs font-bold text-emerald-700 bg-emerald-100/90 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                        <CheckCircle2 size={12} /> Location Verified
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-extrabold text-amber-600 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200">Map Pick Active</span>
                     )}
                   </div>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    <input
-                      type="number"
-                      min="1"
-                      value={formQuantity}
-                      onChange={(e) => { setFormQuantity(Number(e.target.value)); setValidationDone(false); }}
-                      placeholder="Qty"
-                      className="w-full rounded-xl border border-slate-300 bg-white px-2 py-2.5 text-xs font-semibold focus:border-emerald-500 focus:outline-none"
-                      required
-                    />
-                    <select
-                      value={formUnit}
-                      onChange={(e) => setFormUnit(e.target.value)}
-                      className="w-full rounded-xl border border-slate-300 bg-white px-1.5 py-2.5 text-xs font-semibold focus:border-emerald-500 focus:outline-none"
-                    >
-                      <option value="Bottles">Btl</option>
-                      <option value="Packs">Packs</option>
-                      <option value="Boxes">Boxes</option>
-                      <option value="Meals">Meals</option>
-                      <option value="Kits">Kits</option>
-                      <option value="Tarps">Tarps</option>
-                      <option value="Kg">Kg</option>
-                      <option value="Units">Units</option>
-                    </select>
+                  <LocationPicker
+                    value={formLocation}
+                    onChange={(loc) => { setFormLocation(loc); setValidationDone(false); }}
+                    placeholder="Type address or select on interactive map..."
+                    bounds={[79.75, 6.75, 80.05, 6.95]}
+                    defaultCenter={[6.84, 79.88]}
+                  />
+                </div>
+
+                {/* Step 3 Card: Urgency Level & Additional Context */}
+                <div id="form-step-3" className="rounded-2xl border border-slate-200/80 bg-white p-4.5 shadow-xs space-y-3.5 scroll-mt-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-emerald-100 text-emerald-800 font-black text-xs">03</span>
+                      <p className="text-xs font-black uppercase tracking-wider text-slate-700">Urgency Level & Details</p>
+                    </div>
+                    <span className="text-[10px] font-extrabold text-slate-400">Risk Classifier Prepared</span>
+                  </div>
+
+                  <div className="grid grid-cols-4 gap-2">
+                    {(["CRITICAL", "HIGH", "MEDIUM", "LOW"] as UrgencyLevel[]).map((level) => {
+                      const styles: Record<UrgencyLevel, string> = {
+                        CRITICAL: "border-rose-500 bg-rose-50 text-rose-900 ring-2 ring-rose-500/30 font-black shadow-xs",
+                        HIGH: "border-orange-500 bg-orange-50 text-orange-900 ring-2 ring-orange-500/30 font-black shadow-xs",
+                        MEDIUM: "border-amber-500 bg-amber-50 text-amber-900 ring-2 ring-amber-500/30 font-black shadow-xs",
+                        LOW: "border-emerald-500 bg-emerald-50 text-emerald-900 ring-2 ring-emerald-500/30 font-black shadow-xs",
+                      };
+                      const inactive = "border-slate-200 text-slate-600 hover:bg-slate-50";
+                      const emoji: Record<UrgencyLevel, string> = { CRITICAL: "🔴", HIGH: "🟠", MEDIUM: "🟡", LOW: "🟢" };
+                      const label: Record<UrgencyLevel, string> = { CRITICAL: "Critical", HIGH: "High", MEDIUM: "Medium", LOW: "Low" };
+                      return (
+                        <button
+                          key={level}
+                          type="button"
+                          onClick={() => { setFormUrgency(level); setValidationDone(false); }}
+                          className={`py-3 px-2 rounded-2xl border text-center font-extrabold text-xs transition-all cursor-pointer ${
+                            formUrgency === level ? styles[level] : inactive
+                          }`}
+                        >
+                          <div className="text-base">{emoji[level]}</div>
+                          <div className="mt-1">{label[level]}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 pt-2">
+                    <div>
+                      <label className="block text-[11px] font-extrabold text-slate-600 mb-1">People affected</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={formPeopleCount}
+                        onChange={(e) => setFormPeopleCount(e.target.value === "" ? "" : Number(e.target.value))}
+                        placeholder="e.g. 45"
+                        className="w-full rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-bold focus:border-emerald-500 focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-extrabold text-slate-600 mb-1">Additional details</label>
+                      <input
+                        type="text"
+                        value={formReason}
+                        onChange={(e) => setFormReason(e.target.value)}
+                        placeholder="Extra context or delivery instructions..."
+                        className="w-full rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-bold focus:border-emerald-500 focus:outline-none"
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Step 2: Where? */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">2 — Where?</p>
-                  {formLocation && (
-                    <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded flex items-center gap-1">
-                      <CheckCircle2 size={10} /> Location set
-                    </span>
-                  )}
-                  {!formLocation && validationDone && (
-                    <span className="text-[10px] font-bold text-rose-700 bg-rose-100 px-2 py-0.5 rounded">Required</span>
-                  )}
-                </div>
-                <LocationPicker
-                  value={formLocation}
-                  onChange={(loc) => { setFormLocation(loc); setValidationDone(false); }}
-                  placeholder="Type address or drop a pin on the map…"
-                  bounds={[79.75, 6.75, 80.05, 6.95]}
-                  defaultCenter={[6.84, 79.88]}
-                />
-              </div>
-
-
-              {/* Step 3: Urgency + Optional details */}
-              <div className="space-y-2">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">3 — How urgent?</p>
-                <div className="grid grid-cols-4 gap-1.5">
-                  {(["CRITICAL", "HIGH", "MEDIUM", "LOW"] as UrgencyLevel[]).map((level) => {
-                    const styles: Record<UrgencyLevel, string> = {
-                      CRITICAL: "border-rose-400 bg-rose-50 text-rose-800 ring-1 ring-rose-400",
-                      HIGH: "border-orange-400 bg-orange-50 text-orange-800 ring-1 ring-orange-400",
-                      MEDIUM: "border-amber-400 bg-amber-50 text-amber-800 ring-1 ring-amber-400",
-                      LOW: "border-emerald-400 bg-emerald-50 text-emerald-800 ring-1 ring-emerald-400",
-                    };
-                    const inactive = "border-slate-200 text-slate-500 hover:bg-slate-50";
-                    const emoji: Record<UrgencyLevel, string> = { CRITICAL: "🔴", HIGH: "🟠", MEDIUM: "🟡", LOW: "🟢" };
-                    const label: Record<UrgencyLevel, string> = { CRITICAL: "Critical", HIGH: "High", MEDIUM: "Medium", LOW: "Low" };
-                    return (
-                      <button
-                        key={level}
-                        type="button"
-                        onClick={() => { setFormUrgency(level); setValidationDone(false); }}
-                        className={`py-2 px-1 rounded-xl border text-center font-bold text-[11px] transition-all ${
-                          formUrgency === level ? styles[level] : inactive
-                        }`}
-                      >
-                        <div>{emoji[level]}</div>
-                        <div className="mt-0.5">{label[level]}</div>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Optional extras collapsed in one row */}
-                <div className="grid grid-cols-2 gap-2 pt-1">
-                  <div>
-                    <label className="block text-[10px] font-semibold text-slate-400 mb-1">People affected <span className="font-normal">(optional)</span></label>
-                    <input
-                      type="number"
-                      min="1"
-                      value={formPeopleCount}
-                      onChange={(e) => setFormPeopleCount(e.target.value === "" ? "" : Number(e.target.value))}
-                      placeholder="e.g. 30"
-                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs focus:border-emerald-500 focus:outline-none"
-                    />
+                {validationDone && !validationOk && (
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3.5 flex items-center gap-2.5 text-xs font-bold text-amber-900">
+                    <AlertCircle size={16} className="text-amber-500 shrink-0" />
+                    Please specify resource item, quantity, and pick a valid location.
                   </div>
-                  <div>
-                    <label className="block text-[10px] font-semibold text-slate-400 mb-1">Short note <span className="font-normal">(optional)</span></label>
-                    <input
-                      type="text"
-                      value={formReason}
-                      onChange={(e) => setFormReason(e.target.value)}
-                      placeholder="Any extra context..."
-                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs focus:border-emerald-500 focus:outline-none"
-                    />
-                  </div>
-                </div>
+                )}
               </div>
 
-              {/* Inline validation error */}
-              {validationDone && !validationOk && (
-                <div className="rounded-xl border border-amber-200 bg-amber-50 p-2.5 flex items-center gap-2 text-xs text-amber-800">
-                  <AlertCircle size={14} className="text-amber-500 shrink-0" />
-                  Please fill in the item name, quantity, and set a location.
+              {/* Sticky Glassmorphic Footer */}
+              <div className="shrink-0 flex items-center justify-between border-t border-slate-200/80 bg-white/95 backdrop-blur-md px-6 py-4 shadow-lg">
+                <span className="text-[11px] font-bold text-slate-400 hidden sm:inline">
+                  Scroll for full step access ↑
+                </span>
+                <div className="flex items-center gap-3 ml-auto">
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateModal(false)}
+                    className="rounded-2xl border border-slate-200 px-5 py-2.5 text-xs font-extrabold text-slate-600 hover:bg-slate-100 cursor-pointer transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className={`rounded-2xl px-6 py-2.5 text-xs font-black text-white shadow-lg flex items-center gap-2 transition-all cursor-pointer active:scale-95 ${
+                      formMode === "DISASTER"
+                        ? "bg-rose-600 hover:bg-rose-700 shadow-rose-600/25"
+                        : "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/25"
+                    }`}
+                  >
+                    {formMode === "DISASTER" ? "Dispatch Emergency Request" : "Submit Request"} <ArrowRight size={15} />
+                  </button>
                 </div>
-              )}
-
-              {/* Spacer at bottom of scrollable area */}
-              <div className="pb-1" />
-            </div>{/* end scroll body */}
-
-            {/* ── Sticky Footer (always visible) ── */}
-            <div className="shrink-0 flex items-center justify-end gap-2.5 border-t border-slate-100 bg-slate-50/80 px-5 py-3">
-              <button
-                type="button"
-                onClick={() => setShowCreateModal(false)}
-                className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className={`rounded-xl px-5 py-2 text-xs font-bold text-white shadow-xs flex items-center gap-1.5 transition-all ${
-                  formMode === "DISASTER"
-                    ? "bg-rose-600 hover:bg-rose-700 shadow-rose-600/20"
-                    : "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20"
-                }`}
-              >
-                {formMode === "DISASTER" ? "Send Emergency Request" : "Submit Request"} <ArrowRight size={14} />
-              </button>
-            </div>
+              </div>
             </form>
           </div>
         </div>
@@ -1375,63 +1497,59 @@ export default function CommunityRequestsPage() {
       {/* 6. Post-Submission Confirmation Screen                                    */}
       {/* ========================================================================= */}
       {showConfirmation && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-fade-in">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl border border-slate-100 text-center animate-slide-up">
-            <div className="mx-auto w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mb-3 ring-6 ring-emerald-50">
-              <CheckCircle2 size={32} />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="w-full max-w-md rounded-3xl bg-white p-7 shadow-2xl border border-slate-100 text-center animate-slide-up">
+            <div className="mx-auto w-16 h-16 rounded-3xl bg-emerald-100 text-emerald-600 flex items-center justify-center mb-4 ring-8 ring-emerald-50 shadow-inner">
+              <CheckCircle2 size={36} strokeWidth={2.2} />
             </div>
 
-            <h3 className="text-lg font-extrabold text-slate-900">Request Submitted</h3>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Your request has passed validation and entered the coordination pipeline.
+            <h3 className="text-xl font-black text-slate-900">Request Submitted Successfully</h3>
+            <p className="text-xs text-slate-500 mt-1 font-medium">
+              Passed deterministic safety validation and entered matching pipeline.
             </p>
 
-            <div className="mt-3 p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 inline-block font-mono text-xs font-bold text-slate-800">
+            <div className="mt-4 p-3 rounded-2xl bg-slate-100 border border-slate-200 inline-block font-mono text-xs font-black text-slate-900">
               Request ID: <span className="text-emerald-700">#{latestCreatedId || "REQ-1042"}</span>
             </div>
 
-            <div className="mt-1 text-xs text-slate-600">
-              Status: <span className="font-bold text-amber-600">Pending Matching</span>
+            <div className="mt-2 text-xs text-slate-600 font-semibold">
+              Pipeline Status: <span className="font-black text-amber-600">Pending Matching</span>
             </div>
 
             {/* Pipeline Timeline */}
-            <div className="mt-4 text-left rounded-xl border border-slate-100 bg-slate-50/50 p-3.5 space-y-2 text-xs">
-              <div className="flex items-center gap-2 text-emerald-600 font-bold">
-                <CheckCircle2 size={15} />
-                <span>Request Created</span>
+            <div className="mt-5 text-left rounded-2xl border border-slate-200/80 bg-slate-50/80 p-4 space-y-2.5 text-xs font-semibold">
+              <div className="flex items-center gap-2.5 text-emerald-700 font-bold">
+                <CheckCircle2 size={16} />
+                <span>Request Created & Formatted</span>
               </div>
-              <div className="flex items-center gap-2 text-emerald-600 font-bold">
-                <CheckCircle2 size={15} />
-                <span>Validation Passed</span>
+              <div className="flex items-center gap-2.5 text-emerald-700 font-bold">
+                <CheckCircle2 size={16} />
+                <span>Deterministic Validation Passed</span>
               </div>
-              <div className="flex items-center gap-2 text-amber-600 font-bold animate-pulse">
-                <span className="h-2 w-2 rounded-full bg-amber-500 ml-0.5 mr-0.5" />
-                <span>Finding Compatible Resources (PlanningEngine)</span>
+              <div className="flex items-center gap-2.5 text-amber-600 font-bold animate-pulse">
+                <span className="h-2.5 w-2.5 rounded-full bg-amber-500 ml-0.5 mr-0.5" />
+                <span>Evaluating Depots & Inventory (PlanningEngine)</span>
               </div>
-              <div className="flex items-center gap-2 text-slate-400">
-                <span className="h-2 w-2 rounded-full bg-slate-300 ml-0.5 mr-0.5" />
-                <span>Volunteer Matching (VolunteerMatcher)</span>
-              </div>
-              <div className="flex items-center gap-2 text-slate-400">
-                <span className="h-2 w-2 rounded-full bg-slate-300 ml-0.5 mr-0.5" />
-                <span>Assigned → In Progress → Completed</span>
+              <div className="flex items-center gap-2.5 text-slate-400">
+                <span className="h-2.5 w-2.5 rounded-full bg-slate-300 ml-0.5 mr-0.5" />
+                <span>Matching Responders (VolunteerMatcher)</span>
               </div>
             </div>
 
-            <div className="mt-5 flex items-center justify-center gap-2.5">
+            <div className="mt-6 flex items-center justify-center gap-3">
               <button
                 onClick={() => {
                   setShowConfirmation(false);
                   const created = requestsList.find((r) => r.request_id === latestCreatedId);
                   if (created) setSelectedDetailRequest(created);
                 }}
-                className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 text-xs font-bold text-white shadow-xs"
+                className="rounded-2xl bg-emerald-600 hover:bg-emerald-700 px-5 py-2.5 text-xs font-extrabold text-white shadow-md shadow-emerald-600/20 cursor-pointer"
               >
                 View Request Details
               </button>
               <button
                 onClick={() => setShowConfirmation(false)}
-                className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                className="rounded-2xl border border-slate-200 px-5 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-100 cursor-pointer"
               >
                 Close
               </button>
@@ -1441,21 +1559,25 @@ export default function CommunityRequestsPage() {
       )}
 
       {/* ========================================================================= */}
-      {/* 7. Request Details Modal / Drawer (Full Lifecycle & Civic Privacy Safe)    */}
+      {/* 7. Request Details Drawer / Modal                                         */}
       {/* ========================================================================= */}
       {selectedDetailRequest && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
-          <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl border border-slate-100 animate-slide-up my-6 overflow-hidden flex flex-col max-h-[92vh]">
-            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3.5 bg-slate-50/70">
-              <div className="flex items-center gap-2.5">
-                <span className="font-mono text-xs font-extrabold px-2.5 py-1 rounded-lg bg-slate-900 text-white">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="w-full max-w-2xl rounded-3xl bg-white shadow-2xl border border-slate-100 animate-slide-up my-auto overflow-hidden flex flex-col max-h-[92vh]">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 bg-slate-50/90">
+              <div className="flex items-center gap-3">
+                <span className="font-mono text-xs font-black px-3 py-1.5 rounded-xl bg-slate-900 text-white shadow-xs">
                   #{selectedDetailRequest.request_id}
                 </span>
                 <div>
-                  <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <h3 className="text-lg font-black text-slate-900 flex items-center gap-2 flex-wrap">
                     {selectedDetailRequest.resource_name}
+                    <span className="text-xs font-extrabold text-emerald-800 bg-emerald-100 px-2.5 py-0.5 rounded-full border border-emerald-300 flex items-center gap-1">
+                      <ShieldCheck size={13} className="text-emerald-600" /> Verified Request
+                    </span>
                     {selectedDetailRequest.mode === "DISASTER" && (
-                      <span className="text-[10px] font-bold text-rose-700 bg-rose-100 px-2 py-0.5 rounded-md">
+                      <span className="text-xs font-extrabold text-rose-700 bg-rose-100/90 px-2.5 py-0.5 rounded-full border border-rose-200">
                         {selectedDetailRequest.disaster_name || "Disaster Relief"}
                       </span>
                     )}
@@ -1464,47 +1586,64 @@ export default function CommunityRequestsPage() {
               </div>
               <button
                 onClick={() => setSelectedDetailRequest(null)}
-                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100"
+                className="text-slate-400 hover:text-slate-600 p-2 rounded-xl hover:bg-slate-100 transition-colors"
               >
-                <X size={17} />
+                <X size={20} />
               </button>
             </div>
 
-            <div className="p-5 overflow-y-auto space-y-4 text-xs">
+            <div className="p-6 overflow-y-auto space-y-5 text-xs font-medium">
               {/* Summary Strip */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-2.5">
-                  <span className="text-[10px] font-bold uppercase text-slate-400">Quantity</span>
-                  <div className="text-sm font-extrabold text-slate-900 mt-0.5">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3">
+                  <span className="text-[10px] font-black uppercase text-slate-400">Quantity</span>
+                  <div className="text-base font-black text-slate-900 mt-0.5">
                     {selectedDetailRequest.quantity} {selectedDetailRequest.unit}
                   </div>
                 </div>
 
-                <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-2.5">
-                  <span className="text-[10px] font-bold uppercase text-slate-400">People</span>
-                  <div className="text-sm font-extrabold text-slate-900 mt-0.5">
+                <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3">
+                  <span className="text-[10px] font-black uppercase text-slate-400">People</span>
+                  <div className="text-base font-black text-slate-900 mt-0.5">
                     {selectedDetailRequest.people_affected} affected
                   </div>
                 </div>
 
-                <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-2.5">
-                  <span className="text-[10px] font-bold uppercase text-slate-400">Urgency</span>
+                <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3">
+                  <span className="text-[10px] font-black uppercase text-slate-400">Urgency</span>
                   <div className="mt-0.5">{renderUrgencyBadge(selectedDetailRequest.urgency)}</div>
                 </div>
 
-                <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-2.5">
-                  <span className="text-[10px] font-bold uppercase text-slate-400">Needed By</span>
-                  <div className="text-xs font-bold text-slate-800 mt-0.5">
-                    {selectedDetailRequest.needed_by_date}, {selectedDetailRequest.needed_by_time}
+                <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3">
+                  <span className="text-[10px] font-black uppercase text-slate-400">Needed By</span>
+                  <div className="text-xs font-bold text-slate-900 mt-0.5">
+                    {selectedDetailRequest.needed_by_date} {selectedDetailRequest.needed_by_time ? `(${selectedDetailRequest.needed_by_time})` : ""}
                   </div>
                 </div>
               </div>
 
+              {/* Delivery Verification Code & QR Code Display */}
+              <div className="rounded-3xl border border-sky-200 bg-sky-50/40 p-4 space-y-2">
+                <h4 className="text-xs font-black text-slate-900 flex items-center gap-2">
+                  <Sparkles size={15} className="text-sky-600" />
+                  Delivery Verification (Recipient / Coordinator Code)
+                </h4>
+                <p className="text-[11px] text-slate-500">
+                  Provide this Delivery OTP or QR code to the volunteer when they deliver the items to confirm delivery completion.
+                </p>
+                <QRCodeDisplay
+                  codeType="delivery"
+                  otpCode="410932"
+                  qrPayload={JSON.stringify({ task_id: selectedDetailRequest.id, type: "delivery", code: "410932" })}
+                  status={selectedDetailRequest.status === "COMPLETED" ? "verified" : "pending"}
+                />
+              </div>
+
               {/* Status Lifecycle Timeline */}
-              <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-xs">
-                <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-3 flex items-center justify-between">
+              <div className="rounded-3xl border border-slate-200/80 bg-white p-5 shadow-xs">
+                <h4 className="text-xs font-black uppercase tracking-wider text-slate-400 mb-4 flex items-center justify-between">
                   <span>Lifecycle Timeline</span>
-                  <span className="text-emerald-600 font-semibold lowercase">
+                  <span className="text-emerald-700 font-extrabold lowercase">
                     {selectedDetailRequest.status === "PENDING"
                       ? "Finding compatible resources"
                       : selectedDetailRequest.status}
@@ -1512,7 +1651,7 @@ export default function CommunityRequestsPage() {
                 </h4>
 
                 <div className="relative flex items-center justify-between">
-                  <div className="absolute top-1/2 left-3 right-3 -translate-y-1/2 h-1 bg-slate-200 -z-0" />
+                  <div className="absolute top-1/2 left-4 right-4 -translate-y-1/2 h-1.5 bg-slate-200 -z-0 rounded-full" />
                   {[
                     { label: "Created", step: 1 },
                     { label: "Validated", step: 2 },
@@ -1537,15 +1676,15 @@ export default function CommunityRequestsPage() {
                     return (
                       <div key={node.label} className="relative z-10 flex flex-col items-center">
                         <div
-                          className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold border-2 transition-all ${
+                          className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black border-2 transition-all ${
                             isDone
-                              ? "bg-emerald-600 border-emerald-600 text-white"
+                              ? "bg-emerald-600 border-emerald-600 text-white shadow-md shadow-emerald-600/30"
                               : "bg-white border-slate-300 text-slate-400"
                           }`}
                         >
-                          {isDone ? <Check size={13} /> : node.step}
+                          {isDone ? <Check size={15} strokeWidth={3} /> : node.step}
                         </div>
-                        <span className="text-[10px] font-semibold text-slate-700 mt-1 whitespace-nowrap">
+                        <span className="text-[11px] font-bold text-slate-700 mt-1.5 whitespace-nowrap">
                           {node.label}
                         </span>
                       </div>
@@ -1554,30 +1693,30 @@ export default function CommunityRequestsPage() {
                 </div>
               </div>
 
-              {/* Matching Information (Civic Safe - No internal scores) */}
-              <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-xs space-y-2">
-                <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+              {/* Matching Info */}
+              <div className="rounded-3xl border border-slate-200/80 bg-white p-5 shadow-xs space-y-3">
+                <h4 className="text-xs font-black uppercase tracking-wider text-slate-400">
                   Resource & Volunteer Matching
                 </h4>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
-                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
-                    <span className="text-[10px] font-bold uppercase text-slate-400">Resource</span>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100">
+                    <span className="text-[10px] font-black uppercase text-slate-400">Resource</span>
                     <p className="font-bold text-slate-900 mt-0.5">
                       {selectedDetailRequest.matched_resource ||
                         `${selectedDetailRequest.quantity} ${selectedDetailRequest.unit} ${selectedDetailRequest.resource_name}`}
                     </p>
                   </div>
 
-                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
-                    <span className="text-[10px] font-bold uppercase text-slate-400">Matched Donor</span>
+                  <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100">
+                    <span className="text-[10px] font-black uppercase text-slate-400">Matched Depot / Donor</span>
                     <p className="font-bold text-slate-900 mt-0.5">
                       {selectedDetailRequest.matched_donor || "Community Food Bank"}
                     </p>
                   </div>
 
-                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
-                    <span className="text-[10px] font-bold uppercase text-slate-400">Volunteer</span>
+                  <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100">
+                    <span className="text-[10px] font-black uppercase text-slate-400">Assigned Volunteer</span>
                     <p className="font-bold text-slate-900 mt-0.5">
                       {selectedDetailRequest.assigned_volunteer || "Awaiting assignment"}
                     </p>
@@ -1585,54 +1724,40 @@ export default function CommunityRequestsPage() {
                 </div>
               </div>
 
-              {/* Location */}
-              <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-xs space-y-2">
+              {/* Location Box */}
+              <div className="rounded-3xl border border-slate-200/80 bg-white p-5 shadow-xs space-y-2">
                 <div className="flex items-center justify-between">
-                  <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-                    <MapPin size={14} className="text-emerald-600" />
-                    Affected Location
+                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                    <MapPin size={15} className="text-emerald-600" />
+                    Target Destination
                   </h4>
-                  <span className="font-mono text-[11px] text-slate-500">
+                  <span className="font-mono text-xs text-slate-500 font-bold">
                     {selectedDetailRequest.latitude}° N, {selectedDetailRequest.longitude}° E
                   </span>
                 </div>
 
-                <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
-                  <div className="font-bold text-slate-900">{selectedDetailRequest.affected_location}</div>
+                <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100">
+                  <div className="font-extrabold text-slate-900 text-sm">{selectedDetailRequest.affected_location}</div>
                   <div className="text-slate-500 mt-0.5">{selectedDetailRequest.address_or_landmark}</div>
-                  {selectedDetailRequest.is_in_disaster_zone && (
-                    <div className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
-                      <AlertTriangle size={12} /> Inside Active Disaster Zone
-                    </div>
-                  )}
                 </div>
-              </div>
-
-              {/* Reason */}
-              <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-xs space-y-1.5">
-                <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                  Reason for Request
-                </h4>
-                <p className="text-xs text-slate-700 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                  {selectedDetailRequest.reason}
-                </p>
               </div>
             </div>
 
-            <div className="border-t border-slate-100 px-5 py-3 bg-slate-50 flex items-center justify-between">
+            {/* Modal Footer */}
+            <div className="border-t border-slate-100 px-6 py-4 bg-slate-50 flex items-center justify-between">
               {selectedDetailRequest.status === "PENDING" && (
                 <button
                   onClick={() => handleCancelRequest(selectedDetailRequest.request_id)}
-                  className="rounded-xl border border-rose-200 px-3.5 py-1.5 text-xs font-bold text-rose-600 hover:bg-rose-50"
+                  className="rounded-2xl border border-rose-200 px-4 py-2 text-xs font-extrabold text-rose-600 hover:bg-rose-50 cursor-pointer"
                 >
                   Cancel Request
                 </button>
               )}
               <button
                 onClick={() => setSelectedDetailRequest(null)}
-                className="ml-auto rounded-xl bg-slate-900 hover:bg-slate-800 px-4 py-1.5 text-xs font-bold text-white shadow-xs"
+                className="ml-auto rounded-2xl bg-slate-900 hover:bg-slate-800 px-5 py-2 text-xs font-extrabold text-white shadow-sm cursor-pointer"
               >
-                Close View
+                Close Details
               </button>
             </div>
           </div>
@@ -1643,24 +1768,24 @@ export default function CommunityRequestsPage() {
       {/* 8. Edit Request Modal                                                     */}
       {/* ========================================================================= */}
       {editingRequest && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-fade-in">
-          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl border border-slate-100 animate-slide-up">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-3">
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
-                <Edit3 className="text-emerald-600" size={16} />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl border border-slate-100 animate-slide-up my-auto">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-4">
+              <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+                <Edit3 className="text-emerald-600" size={18} />
                 Edit Request #{editingRequest.request_id}
               </h3>
               <button
                 onClick={() => setEditingRequest(null)}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100"
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100"
               >
-                <X size={16} />
+                <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={handleSaveEdit} className="space-y-3 text-xs">
+            <form onSubmit={handleSaveEdit} className="space-y-4 text-xs font-medium">
               <div>
-                <label className="block text-slate-600 font-bold mb-1">
+                <label className="block text-slate-700 font-extrabold mb-1">
                   Quantity ({editingRequest.unit})
                 </label>
                 <input
@@ -1670,62 +1795,50 @@ export default function CommunityRequestsPage() {
                   onChange={(e) =>
                     setEditingRequest({ ...editingRequest, quantity: Number(e.target.value) })
                   }
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold focus:border-emerald-500 focus:outline-none"
+                  className="w-full rounded-2xl border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-900 focus:border-emerald-500 focus:outline-none"
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-slate-600 font-bold mb-1">Urgency Level</label>
+                <label className="block text-slate-700 font-extrabold mb-1">Urgency Level</label>
                 <select
                   value={editingRequest.urgency}
                   onChange={(e) =>
                     setEditingRequest({ ...editingRequest, urgency: e.target.value as UrgencyLevel })
                   }
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold focus:border-emerald-500 focus:outline-none"
+                  className="w-full rounded-2xl border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-900 focus:border-emerald-500 focus:outline-none cursor-pointer"
                 >
                   <option value="CRITICAL">🔴 Critical (Immediate)</option>
-                  <option value="HIGH">🟠 High (Within several hours)</option>
-                  <option value="MEDIUM">🟡 Medium (Needed today)</option>
-                  <option value="LOW">🟢 Low (Can be fulfilled later)</option>
+                  <option value="HIGH">🟠 High (Within hours)</option>
+                  <option value="MEDIUM">🟡 Medium (Today)</option>
+                  <option value="LOW">🟢 Low (Later)</option>
                 </select>
               </div>
 
               <div>
-                <label className="block text-slate-600 font-bold mb-1">Needed By Time</label>
-                <input
-                  type="text"
-                  value={editingRequest.needed_by_time}
-                  onChange={(e) =>
-                    setEditingRequest({ ...editingRequest, needed_by_time: e.target.value })
-                  }
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold focus:border-emerald-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-600 font-bold mb-1">Reason</label>
+                <label className="block text-slate-700 font-extrabold mb-1">Reason / Note</label>
                 <textarea
-                  rows={2}
+                  rows={3}
                   value={editingRequest.reason}
                   onChange={(e) =>
                     setEditingRequest({ ...editingRequest, reason: e.target.value })
                   }
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs focus:border-emerald-500 focus:outline-none"
+                  className="w-full rounded-2xl border border-slate-200 px-4 py-2.5 text-xs text-slate-900 focus:border-emerald-500 focus:outline-none"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setEditingRequest(null)}
-                  className="rounded-xl border border-slate-200 px-3.5 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                  className="rounded-2xl border border-slate-200 px-4 py-2 text-xs font-extrabold text-slate-600 hover:bg-slate-100 cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-1.5 text-xs font-bold text-white shadow-xs"
+                  className="rounded-2xl bg-emerald-600 hover:bg-emerald-700 px-5 py-2 text-xs font-black text-white shadow-md shadow-emerald-600/20 cursor-pointer"
                 >
                   Save Changes
                 </button>
@@ -1737,3 +1850,4 @@ export default function CommunityRequestsPage() {
     </div>
   );
 }
+

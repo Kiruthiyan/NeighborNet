@@ -26,11 +26,21 @@ class VolunteerAlert(TimestampedModel):
     alert_id: str = Field(default_factory=lambda: generate_id("alert"))
     volunteer_id: str
     disaster_id: Optional[str] = None
+    task_id: Optional[str] = None
+    donation_id: Optional[str] = None
+    request_id: Optional[str] = None
     task_category: str
-    location: str
+    location: str = "Zone B"
+    pickup_location: Optional[str] = None
+    destination: Optional[str] = None
+    resource_type: Optional[str] = None
+    quantity: Optional[int] = None
+    unit: Optional[str] = None
     approximate_distance: float = 0.0
+    estimated_travel_time: Optional[str] = None
+    request_info: Optional[str] = None
     urgency: TaskPriority = TaskPriority.HIGH
-    assistance_required: str
+    assistance_required: str = "Transport surplus donation to verified community request"
     status: VolunteerAlertStatus = VolunteerAlertStatus.PENDING
     sent_at: datetime = Field(default_factory=datetime.now)
     expires_at: datetime = Field(

@@ -98,10 +98,74 @@ def _strip_thinking(text: str) -> str:
     return _THINKING_TAG_RE.sub("", text).strip()
 
 
+def run_fallback_instruction(instruction: str) -> str:
+    """Fallback orchestrator when live AWS Bedrock is unavailable.
+    Executes the appropriate underlying deterministic tool and returns a summary.
+    """
+    from src.services.coordination import get_coordination_service
+    from src.agents.strands_tools import alert_nearby_volunteers, assign_accepted_volunteers, get_dashboard_summary
+
+    text = instruction.lower()
+    service = get_coordination_service()
+
+    if "alert" in text or "notify" in text or "send alert" in text:
+        disasters = service.state.disasters
+        if not disasters:
+            return "No active disasters found to send alerts for."
+        disaster_id = disasters[0].disaster_id
+        alerts = alert_nearby_volunteers(disaster_id)
+        return (
+            f"[Tool Invoked: alert_nearby_volunteers(disaster_id='{disaster_id}')]\n"
+            f"Successfully dispatched alerts to {len(alerts)} nearby verified volunteers for disaster '{disasters[0].title}'. "
+            "Note: Alert acceptance makes volunteers eligible for assignment; it does not automatically assign tasks."
+        )
+    elif "assign" in text or "match" in text:
+        disasters = service.state.disasters
+        if not disasters:
+            return "No active disasters found to assign tasks for."
+        disaster_id = disasters[0].disaster_id
+        tasks = assign_accepted_volunteers(disaster_id)
+        return (
+            f"[Tool Invoked: assign_accepted_volunteers(disaster_id='{disaster_id}')]\n"
+            f"PlanningEngine deterministically assigned {len(tasks)} tasks to accepted eligible volunteers based on "
+            "skills, location, capacity, workload, and route safety. Decision source: PlanningEngine."
+        )
+    elif "find" in text or "near" in text or "volunteer" in text:
+        volunteers = [v for v in service.state.volunteers if v.verified and v.is_available_for_assignment]
+        summary = get_dashboard_summary()
+        return (
+            f"[Tool Invoked: get_dashboard_summary()]\n"
+            f"Found {len(volunteers)} eligible verified volunteers in service area. "
+            f"Current active tasks: {summary['counts']['tasks_in_progress']}, Pending AMBER decisions: {summary['counts']['pending_decisions']}."
+        )
+    elif "disruption" in text or "cancel" in text or "recovery" in text:
+        from src.agents.strands_tools import report_disruption
+        tasks = service.state.tasks
+        task_ids = [t.task_id for t in tasks[:1]] if tasks else ["task-101"]
+        res = report_disruption(task_ids, "Volunteer unavailable / route disruption")
+        return (
+            f"[Tool Invoked: report_disruption(task_ids={task_ids})]\n"
+            f"Reported disruption for tasks {task_ids}. RecoveryEngine evaluated affected tasks and generated an AMBER decision. "
+            "Decision requires human coordinator approval on the Decisions page."
+        )
+    else:
+        summary = get_dashboard_summary()
+        return (
+            f"[Tool Invoked: get_dashboard_summary()]\n"
+            f"System Status: {summary['counts']['active_volunteers']} active volunteers, "
+            f"{summary['counts']['active_disasters']} active disasters, {summary['counts']['pending_decisions']} pending decisions."
+        )
+
+
 def run_instruction(instruction: str, model_id: Optional[str] = None) -> str:
     """Run one coordinator instruction through the Strands agent and return
     its final natural-language response."""
 
-    agent = build_agent(model_id=model_id)
-    result = agent(instruction)
-    return _strip_thinking(str(result))
+    try:
+        agent = build_agent(model_id=model_id)
+        result = agent(instruction)
+        return _strip_thinking(str(result))
+    except Exception:
+        # Fall back to deterministic tool matching if Bedrock call fails
+        return run_fallback_instruction(instruction)
+

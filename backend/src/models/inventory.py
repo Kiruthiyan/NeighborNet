@@ -17,6 +17,11 @@ class ResourceType(str, Enum):
     FROZEN_FOOD = "frozen_food"
     DAIRY = "dairy"
     BEVERAGES = "beverages"
+    FOOD = "food"
+    WATER = "water"
+    MEDICAL = "medical"
+    CLOTHING = "clothing"
+    EQUIPMENT = "equipment"
 
 
 class InventoryStatus(str, Enum):
@@ -64,6 +69,7 @@ class InventoryBatch(TimestampedModel):
     
     # Item details
     description: str
+    item_name: Optional[str] = None
     brand: Optional[str] = None
     size: Optional[str] = None
     unit: str = "items"  # items, pounds, servings, etc.
@@ -79,6 +85,12 @@ class InventoryBatch(TimestampedModel):
     # Location
     location_id: str
     storage_location: Optional[str] = None  # specific location within facility
+    pickup_location: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+
+    # Pickup Verification OTP
+    pickup_otp: Optional[str] = None
     
     # Food safety
     dietary_metadata: DietaryMetadata = Field(default_factory=DietaryMetadata)

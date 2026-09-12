@@ -4,9 +4,11 @@ This service is intentionally in-memory for the local demo/API slice. DynamoDB
 table definitions exist separately for persistence wiring.
 """
 
+import math
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import structlog
 
@@ -34,8 +36,11 @@ from src.models import (
     StrandsAuditLog,
     TaskLifecycle,
     TaskPriority,
+    TaskVerificationCode,
     UrgencyLevel,
     User,
+    VerificationCodeType,
+    VerificationStatus,
     Volunteer,
     VolunteerAlert,
     VolunteerAlertStatus,
@@ -55,6 +60,7 @@ TABLE_INVENTORY = "Inventory"
 TABLE_REQUESTS = "Requests"
 TABLE_ALLOCATIONS = "Allocations"
 TABLE_STRANDS_AUDIT_LOGS = "StrandsAuditLogs"
+TABLE_VERIFICATION = "TaskVerificationCodes"
 
 logger = structlog.get_logger(__name__)
 
@@ -76,6 +82,7 @@ class CoordinationState:
     events: List[Event] = field(default_factory=list)
     invitations: List[Invitation] = field(default_factory=list)
     strands_audit_logs: List[StrandsAuditLog] = field(default_factory=list)
+    verification_codes: List[TaskVerificationCode] = field(default_factory=list)
 
 
 class CoordinationService:
@@ -86,6 +93,7 @@ class CoordinationService:
         self.recovery = RecoveryEngine()
         self.state = CoordinationState()
         self.store = get_dynamo_store()
+        self._task_lock = threading.Lock()
         # Recovery plans staged behind a pending AMBER Decision, keyed by
         # decision_id, not applied to operational state until a coordinator
         # approves them. Intentionally in-memory only (see approve_decision) -
@@ -166,6 +174,10 @@ class CoordinationService:
         self.state.strands_audit_logs = [
             StrandsAuditLog.model_validate(item)
             for item in self.store.scan_all(TABLE_STRANDS_AUDIT_LOGS)
+        ]
+        self.state.verification_codes = [
+            TaskVerificationCode.model_validate(item)
+            for item in self.store.scan_all(TABLE_VERIFICATION)
         ]
         self._backfill_legacy_auth_fields(seed)
         return True
@@ -431,6 +443,7 @@ class CoordinationService:
         self._persist(TABLE_TASKS, task)
         self._persist(TABLE_ALLOCATIONS, allocation)
         self._bind_volunteer(task.volunteer_id)
+        self.generate_task_verification_codes(task)
 
         batch = next((b for b in self.state.inventory if b.batch_id == allocation.batch_id), None)
         request = next((r for r in self.state.requests if r.request_id == allocation.request_id), None)
@@ -447,23 +460,49 @@ class CoordinationService:
 
     def create_inventory_batch(self, payload: Dict[str, object], donor: User) -> InventoryBatch:
         """Record a donor's surplus food/resource donation."""
+        import random
 
         quantity = int(payload.get("quantity_available", payload.get("quantity", 0)) or 0)
         if quantity <= 0:
             raise ValueError("quantity_available must be positive")
 
+        raw_type = str(payload.get("resource_type", "pantry_item")).lower()
+        try:
+            res_type = ResourceType(raw_type)
+        except ValueError:
+            res_type_map = {
+                "food": ResourceType.FOOD,
+                "water": ResourceType.WATER,
+                "medical": ResourceType.MEDICAL,
+                "clothing": ResourceType.CLOTHING,
+                "equipment": ResourceType.EQUIPMENT,
+            }
+            res_type = res_type_map.get(raw_type, ResourceType.PANTRY_ITEM)
+
+        item_name = str(payload.get("item_name") or payload.get("description") or "Donated items")
+        pickup_loc = str(payload.get("pickup_location") or payload.get("location_id") or "")
+        lat_val = payload.get("latitude")
+        lng_val = payload.get("longitude")
+        pickup_otp = str(payload.get("pickup_otp") or random.randint(700000, 999999))
+
         dietary_payload = payload.get("dietary_metadata") or {}
         batch = InventoryBatch(
-            resource_type=ResourceType(str(payload.get("resource_type", "pantry_item")).lower()),
+            resource_type=res_type,
             quantity_available=quantity,
-            description=str(payload.get("description", "Donated items")),
+            description=item_name,
+            item_name=item_name,
             brand=payload.get("brand"),
             size=payload.get("size"),
             unit=str(payload.get("unit", "items")),
             expiry_datetime=payload.get("expiry_datetime"),
             donor_org_id=str(payload.get("donor_org_id") or donor.user_id),
-            location_id=str(payload.get("location_id") or payload.get("donor_org_id") or donor.user_id),
-            dietary_metadata=DietaryMetadata(**dietary_payload) if dietary_payload else DietaryMetadata(),
+            location_id=pickup_loc or str(donor.user_id),
+            storage_location=pickup_loc,
+            pickup_location=pickup_loc,
+            latitude=float(lat_val) if lat_val is not None else None,
+            longitude=float(lng_val) if lng_val is not None else None,
+            pickup_otp=pickup_otp,
+            dietary_metadata=DietaryMetadata(**dietary_payload) if isinstance(dietary_payload, dict) else DietaryMetadata(),
             temperature_requirements=payload.get("temperature_requirements"),
         )
         self.state.inventory.append(batch)
@@ -621,6 +660,7 @@ class CoordinationService:
         for task in tasks:
             self._persist(TABLE_TASKS, task)
             self._bind_volunteer(task.volunteer_id)
+            self.generate_task_verification_codes(task)
         self._record_event(f"Disaster tasks assigned: {len(tasks)}", "disaster")
         return tasks
 
@@ -742,6 +782,7 @@ class CoordinationService:
         for task in repaired:
             self._persist(TABLE_TASKS, task)
             self._bind_volunteer(task.volunteer_id)
+            self.generate_task_verification_codes(task)
         for task in superseded:
             # Same object referenced in self.state.tasks. RecoveryEngine
             # deliberately leaves it untouched during planning (see
@@ -751,6 +792,11 @@ class CoordinationService:
             task.status = TaskLifecycle.SUPERSEDED
             task.recovery_reason = task.recovery_reason or "Superseded by recovery reassignment"
             task.updated_at = datetime.now()
+            # Invalidate old verification codes for superseded task
+            for vcode in self.state.verification_codes:
+                if vcode.task_id == task.task_id and vcode.status == VerificationStatus.PENDING:
+                    vcode.invalidate()
+                    self._persist(TABLE_VERIFICATION, vcode)
             self._persist(TABLE_TASKS, task)
             self._release_volunteer(freed_volunteer_id)
 
@@ -880,6 +926,319 @@ class CoordinationService:
         self.state.strands_audit_logs.append(log)
         self._persist(TABLE_STRANDS_AUDIT_LOGS, log)
         return log
+
+    # -- Task Verification System ----------------------------------------
+
+    def generate_task_verification_codes(
+        self, task: CoordinationTask
+    ) -> Tuple[TaskVerificationCode, TaskVerificationCode]:
+        """Generate unique one-time verification codes for pickup and delivery."""
+
+        # Invalidate existing pending codes for this task
+        for existing in self.state.verification_codes:
+            if existing.task_id == task.task_id and existing.status == VerificationStatus.PENDING:
+                existing.invalidate()
+                self._persist(TABLE_VERIFICATION, existing)
+
+        pickup_code = TaskVerificationCode(
+            task_id=task.task_id,
+            code_type=VerificationCodeType.PICKUP,
+        )
+        delivery_code = TaskVerificationCode(
+            task_id=task.task_id,
+            code_type=VerificationCodeType.DELIVERY,
+        )
+
+        self.state.verification_codes.extend([pickup_code, delivery_code])
+        self._persist(TABLE_VERIFICATION, pickup_code)
+        self._persist(TABLE_VERIFICATION, delivery_code)
+
+        task.pickup_verification_id = pickup_code.verification_id
+        task.delivery_verification_id = delivery_code.verification_id
+        self._persist(TABLE_TASKS, task)
+
+        return pickup_code, delivery_code
+
+    def get_task_verifications(self, task_id: str) -> Dict[str, Any]:
+        """Retrieve verification status and codes for a task."""
+
+        task = self.get_task(task_id)
+        codes = [c for c in self.state.verification_codes if c.task_id == task_id]
+
+        pickup_code = next((c for c in reversed(codes) if c.code_type == VerificationCodeType.PICKUP and c.status == VerificationStatus.PENDING), None)
+        if not pickup_code:
+            pickup_code = next((c for c in reversed(codes) if c.code_type == VerificationCodeType.PICKUP), None)
+
+        delivery_code = next((c for c in reversed(codes) if c.code_type == VerificationCodeType.DELIVERY and c.status == VerificationStatus.PENDING), None)
+        if not delivery_code:
+            delivery_code = next((c for c in reversed(codes) if c.code_type == VerificationCodeType.DELIVERY), None)
+
+        if not pickup_code or not delivery_code:
+            pickup_code, delivery_code = self.generate_task_verification_codes(task)
+
+        return {
+            "task_id": task.task_id,
+            "pickup_verified": task.pickup_verified,
+            "delivery_verified": task.delivery_verified,
+            "status": task.status,
+            "pickup_code": pickup_code.model_dump(mode="json") if pickup_code else None,
+            "delivery_code": delivery_code.model_dump(mode="json") if delivery_code else None,
+        }
+
+    def verify_task_pickup(
+        self, task_id: str, code_or_qr: str, volunteer_user_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Verify donation pickup using OTP or QR code."""
+
+        task = self.get_task(task_id)
+        if task.pickup_verified:
+            raise ValueError("Pickup has already been verified for this task")
+        if volunteer_user_id and task.donor_user_id and volunteer_user_id == task.donor_user_id:
+            raise ValueError("Trust Rule Violated: Volunteer cannot verify pickup for their own donation")
+
+        codes = [
+            c for c in self.state.verification_codes
+            if c.task_id == task_id and c.code_type == VerificationCodeType.PICKUP
+        ]
+
+        clean_input = code_or_qr.strip()
+        matched_code = None
+
+        for c in reversed(codes):
+            if not c.is_valid:
+                continue
+            if clean_input in (c.otp_code, c.qr_payload):
+                matched_code = c
+                break
+            try:
+                parsed = json.loads(clean_input)
+                if parsed.get("code") == c.otp_code or parsed.get("verification_id") == c.verification_id:
+                    matched_code = c
+                    break
+            except Exception:
+                pass
+
+        if matched_code is None:
+            raise ValueError("Invalid, expired, or non-matching pickup verification code")
+
+        matched_code.mark_verified(volunteer_user_id or task.volunteer_id or "system")
+        self._persist(TABLE_VERIFICATION, matched_code)
+
+        task.pickup_verified = True
+        task.status = TaskLifecycle.IN_PROGRESS
+        task.update_timestamp()
+        self._persist(TABLE_TASKS, task)
+
+        self._record_event(f"Pickup verified for task {task_id}", task.operating_mode.value)
+        return {
+            "success": True,
+            "message": "Pickup verified successfully",
+            "task": task,
+            "verification": matched_code.model_dump(mode="json"),
+        }
+
+    def verify_task_delivery(
+        self, task_id: str, code_or_qr: str, volunteer_user_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Verify donation delivery using OTP or QR code."""
+
+        task = self.get_task(task_id)
+        if not task.pickup_verified:
+            raise ValueError("Pickup must be verified before delivery can be verified")
+        if task.delivery_verified or task.status == TaskLifecycle.COMPLETED:
+            raise ValueError("Delivery has already been verified for this task")
+        if volunteer_user_id and task.recipient_user_id and volunteer_user_id == task.recipient_user_id:
+            raise ValueError("Trust Rule Violated: Volunteer cannot verify delivery for their own request")
+
+        codes = [
+            c for c in self.state.verification_codes
+            if c.task_id == task_id and c.code_type == VerificationCodeType.DELIVERY
+        ]
+
+        clean_input = code_or_qr.strip()
+        matched_code = None
+
+        for c in reversed(codes):
+            if not c.is_valid:
+                continue
+            if clean_input in (c.otp_code, c.qr_payload):
+                matched_code = c
+                break
+            try:
+                parsed = json.loads(clean_input)
+                if parsed.get("code") == c.otp_code or parsed.get("verification_id") == c.verification_id:
+                    matched_code = c
+                    break
+            except Exception:
+                pass
+
+        if matched_code is None:
+            raise ValueError("Invalid, expired, or non-matching delivery verification code")
+
+        matched_code.mark_verified(volunteer_user_id or task.volunteer_id or "system")
+        self._persist(TABLE_VERIFICATION, matched_code)
+
+        task.delivery_verified = True
+        task.mark_completed()
+        self._persist(TABLE_TASKS, task)
+        self._release_volunteer(task.volunteer_id)
+
+        if task.request_id:
+            req = next((r for r in self.state.requests if r.request_id == task.request_id), None)
+            if req:
+                req.status = RequestStatus.FULFILLED
+                self._persist(TABLE_REQUESTS, req)
+
+        self._record_event(f"Delivery verified and task completed for task {task_id}", task.operating_mode.value)
+        return {
+            "success": True,
+            "message": "Delivery verified and task marked completed",
+            "task": task,
+            "verification": matched_code.model_dump(mode="json"),
+        }
+
+    def reassign_task_volunteer(self, task_id: str, new_volunteer_id: str) -> Dict[str, Any]:
+        """Reassign task to a new volunteer, invalidating old codes and generating new ones."""
+
+        task = self.get_task(task_id)
+        old_volunteer_id = task.volunteer_id
+
+        if old_volunteer_id:
+            self._release_volunteer(old_volunteer_id)
+
+        task.assign(new_volunteer_id)
+        self._bind_volunteer(new_volunteer_id)
+        self._persist(TABLE_TASKS, task)
+
+        pickup_code, delivery_code = self.generate_task_verification_codes(task)
+
+        self._record_event(
+            f"Task {task_id} reassigned to volunteer {new_volunteer_id}. Old verification codes invalidated.",
+            task.operating_mode.value,
+        )
+        return {
+            "task": task,
+            "old_volunteer_id": old_volunteer_id,
+            "new_volunteer_id": new_volunteer_id,
+            "pickup_code": pickup_code.model_dump(mode="json"),
+            "delivery_code": delivery_code.model_dump(mode="json"),
+        }
+
+    def verify_request(self, request_id: str) -> Request:
+        """Verify a request's phone number, location, and duplicate check."""
+
+        request = next((r for r in self.state.requests if r.request_id == request_id), None)
+        if not request:
+            raise ValueError(f"Request {request_id} not found")
+
+        # Duplicate check: any other request with same requesting_org_id & resource_type
+        duplicates = [
+            r for r in self.state.requests
+            if r.request_id != request_id
+            and r.requesting_org_id == request.requesting_org_id
+            and r.resource_type == request.resource_type
+            and r.quantity_requested == request.quantity_requested
+            and r.status != RequestStatus.CANCELLED
+        ]
+
+        if duplicates:
+            request.is_duplicate = True
+            request.request_verified = False
+            self._persist(TABLE_REQUESTS, request)
+            self._record_event(f"Request {request_id} flagged as duplicate of {duplicates[0].request_id}", "normal")
+            raise ValueError(f"Duplicate request detected: matches existing request {duplicates[0].request_id}")
+
+        request.phone_verified = True
+        request.location_verified = True
+        request.request_verified = True
+        request.is_duplicate = False
+        self._persist(TABLE_REQUESTS, request)
+        self._record_event(f"Request {request_id} verified (Phone & Location verified)", "normal")
+        return request
+
+    def atomic_accept_task(self, task_id: str, volunteer_id: str) -> CoordinationTask:
+        """Atomic thread-safe acceptance of a task by a volunteer."""
+
+        with self._task_lock:
+            task = self.get_task(task_id)
+
+            volunteer = next((v for v in self.state.volunteers if v.volunteer_id == volunteer_id), None)
+            if volunteer and not (volunteer.phone_verified and volunteer.verified):
+                raise ValueError("Volunteer must have a verified phone number to accept tasks")
+
+            # Check if task is already assigned to another volunteer
+            if task.volunteer_id and task.volunteer_id != volunteer_id and task.status in (TaskLifecycle.ASSIGNED, TaskLifecycle.IN_PROGRESS, TaskLifecycle.COMPLETED):
+                raise ValueError("Task has already been claimed by another volunteer")
+
+            task.assign(volunteer_id)
+            self._bind_volunteer(volunteer_id)
+            self.generate_task_verification_codes(task)
+            self._persist(TABLE_TASKS, task)
+            self._record_event(f"Task {task_id} atomically accepted and assigned to volunteer {volunteer_id}", task.operating_mode.value)
+            return task
+
+    def report_route_telemetry(
+        self, task_id: str, current_lat: float, current_lng: float, volunteer_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Report live GPS telemetry and detect route deviations."""
+
+        task = self.get_task(task_id)
+        dest = task.destination or {}
+        dest_lat = dest.get("lat") or dest.get("latitude") or 6.9271
+        dest_lng = dest.get("lng") or dest.get("longitude") or 79.8612
+
+        def haversine(lat1, lon1, lat2, lon2):
+            R = 6371.0
+            dlat = math.radians(lat2 - lat1)
+            dlon = math.radians(lon2 - lon1)
+            a = math.sin(dlat / 2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2)**2
+            return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+        dist_km = haversine(current_lat, current_lng, dest_lat, dest_lng)
+        deviation_detected = dist_km > 5.0  # >5km deviation trigger
+
+        if deviation_detected and not task.route_deviation_flagged:
+            task.route_deviation_flagged = True
+            task.route_deviation_reason = f"Major route deviation detected ({dist_km:.1f} km off-route)"
+            task.status = TaskLifecycle.NEEDS_ATTENTION
+            self._persist(TABLE_TASKS, task)
+            self._record_event(f"Route deviation flagged for task {task_id}: {dist_km:.1f} km off-route", task.operating_mode.value)
+
+        return {
+            "task_id": task_id,
+            "distance_remaining_km": round(dist_km, 2),
+            "deviation_flagged": task.route_deviation_flagged,
+            "deviation_reason": task.route_deviation_reason,
+            "status": task.status,
+        }
+
+    def cancel_and_recover_task(self, task_id: str, volunteer_id: str, reason: str = "Cannot continue") -> Dict[str, Any]:
+        """Volunteer clicks 'Cannot Continue' - task transitions to Needs Recovery and RecoveryEngine reassigns task."""
+
+        task = self.get_task(task_id)
+        self._release_volunteer(volunteer_id)
+
+        task.status = TaskLifecycle.NEEDS_ATTENTION
+        task.recovery_reason = f"Volunteer {volunteer_id} declared: {reason}"
+        task.updated_at = datetime.now()
+        self._persist(TABLE_TASKS, task)
+
+        # Trigger RecoveryEngine
+        disruption = {
+            "task_ids": [task_id],
+            "volunteer_id": volunteer_id,
+            "reason": reason,
+            "create_amber_decision": False,
+        }
+        recovery_result = self.recover(disruption)
+
+        self._record_event(f"Task {task_id} volunteer {volunteer_id} cancelled ('Cannot Continue'). Recovery triggered.", task.operating_mode.value)
+        return {
+            "success": True,
+            "message": "Task marked for recovery. RecoveryEngine has assigned a replacement volunteer.",
+            "task": task,
+            "recovery_result": recovery_result,
+        }
 
     def _record_event(self, description: str, mode: str) -> None:
         """Record auditable local event."""

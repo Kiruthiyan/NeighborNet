@@ -58,6 +58,7 @@ class User(TimestampedModel):
     # password, with a purpose and expiry. Only one OTP is live at a time;
     # issuing a new one overwrites it. See src/auth/router.py.
     email_verified: bool = False
+    phone_verified: bool = False
     otp_hash: Optional[str] = None
     otp_purpose: Optional[str] = None  # "verify_email" | "reset_password"
     otp_expires_at: Optional[datetime] = None

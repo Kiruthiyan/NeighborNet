@@ -45,6 +45,17 @@ class CoordinationTask(TimestampedModel):
     recovery_reason: Optional[str] = None
     preserved: bool = False
 
+    # Verification & Trust tracking
+    donation_id: Optional[str] = None
+    donor_user_id: Optional[str] = None
+    recipient_user_id: Optional[str] = None
+    pickup_verified: bool = False
+    delivery_verified: bool = False
+    pickup_verification_id: Optional[str] = None
+    delivery_verification_id: Optional[str] = None
+    route_deviation_flagged: bool = False
+    route_deviation_reason: Optional[str] = None
+
     @property
     def needs_attention(self) -> bool:
         """Whether task should appear in Needs Attention board column."""

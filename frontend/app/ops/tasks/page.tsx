@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Kanban, MapPin, AlertCircle, CheckCircle, Clock, ArrowRight, ShieldCheck } from "lucide-react";
 import { Panel, StatusBadge, EmptyState } from "../../../components/ui";
 import { apiGet } from "../../../lib/api";
+import { formatLocation } from "../../../lib/format";
 
 export default function OpsTasksPage() {
   const [tasks, setTasks] = useState<any[]>([]);
@@ -79,7 +80,7 @@ export default function OpsTasksPage() {
                         <h4 className="text-xs font-bold text-white leading-snug">{task.task_type || "DELIVERY"}</h4>
                         <p className="text-[11px] text-slate-400 mt-1 flex items-center gap-1">
                           <MapPin size={11} className="text-slate-500 shrink-0" />
-                          <span className="truncate">{task.pickup_location || "Hub"} → {task.delivery_location || "Dest"}</span>
+                          <span className="truncate">{formatLocation(task.pickup_location, "Hub")} → {formatLocation(task.delivery_location || task.destination, "Dest")}</span>
                         </p>
                         {task.volunteer_id && (
                           <p className="text-[10px] font-semibold text-sky-300 mt-2 border-t border-slate-700/60 pt-1.5">

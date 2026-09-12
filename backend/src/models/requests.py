@@ -78,9 +78,13 @@ class Request(TimestampedModel):
     # Status tracking
     status: RequestStatus = RequestStatus.PENDING
     
-    # Contact info for coordination
+    # Contact info & Trust Verification
     contact_person: Optional[str] = None
     contact_phone: Optional[str] = None
+    phone_verified: bool = True
+    location_verified: bool = True
+    is_duplicate: bool = False
+    request_verified: bool = True
     
     @validator('quantity_fulfilled')
     def validate_fulfilled_quantity(cls, v, values):

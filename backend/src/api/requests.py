@@ -28,3 +28,14 @@ async def create_request(payload: Dict[str, Any], requester: User = Depends(get_
         return get_coordination_service().create_request(payload, requester)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/{request_id}/verify")
+async def verify_request(request_id: str):
+    """Verify request phone, location, and deduplication before matching."""
+
+    try:
+        return get_coordination_service().verify_request(request_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import dynamic from "next/dynamic";
-import { MapPin, Search, X, Loader2, CheckCircle2, AlertCircle, Map } from "lucide-react";
+import { MapPin, Search, X, Loader2, CheckCircle2, AlertCircle, Map, Navigation } from "lucide-react";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -71,11 +71,12 @@ const MapPicker = dynamic(() => import("./MapPickerInner"), { ssr: false, loadin
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export default function LocationPicker({ value, onChange, placeholder = "Type address or drop a pin…", bounds, defaultCenter = [6.84, 79.88] }: Props) {
+export default function LocationPicker({ value, onChange, placeholder = "Type address, fetch location, or drop a pin…", bounds, defaultCenter = [6.84, 79.88] }: Props) {
   const [mode, setMode] = useState<"type" | "map">("type");
   const [query, setQuery] = useState(value?.address ?? "");
   const [suggestions, setSuggestions] = useState<NominatimResult[]>([]);
   const [searching, setSearching] = useState(false);
+  const [fetchingGeo, setFetchingGeo] = useState(false);
   const [verifyState, setVerifyState] = useState<"idle" | "verified" | "unverified">(
     value?.verified ? "verified" : "idle"
   );
@@ -94,6 +95,42 @@ export default function LocationPicker({ value, onChange, placeholder = "Type ad
       setVerifyState("idle");
     }
   }, [value]);
+
+  // Fetch location via Geolocation API
+  const handleFetchLocation = () => {
+    if (typeof window === "undefined" || !navigator.geolocation) {
+      alert("Geolocation is not supported by your browser.");
+      return;
+    }
+    setFetchingGeo(true);
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        setMapCenter([lat, lng]);
+        try {
+          const address = await reverseNominatim(lat, lng);
+          const loc: LocationResult = { address, lat, lng, verified: true };
+          onChange(loc);
+          setQuery(address);
+          setVerifyState("verified");
+        } catch {
+          const fallbackAddress = `GPS Location (${lat.toFixed(5)}, ${lng.toFixed(5)})`;
+          const loc: LocationResult = { address: fallbackAddress, lat, lng, verified: true };
+          onChange(loc);
+          setQuery(fallbackAddress);
+          setVerifyState("verified");
+        } finally {
+          setFetchingGeo(false);
+        }
+      },
+      (err) => {
+        setFetchingGeo(false);
+        alert(`Unable to fetch location (${err.message || "Permission denied"}). Try typing or map pin.`);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  };
 
   // Debounced Nominatim search as user types
   const handleQueryChange = useCallback((raw: string) => {
@@ -154,21 +191,37 @@ export default function LocationPicker({ value, onChange, placeholder = "Type ad
 
   return (
     <div className="space-y-2">
-      {/* Mode tabs */}
-      <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl w-fit text-[11px] font-bold">
+      {/* Mode tabs + Fetch Location button */}
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl w-fit text-[11px] font-bold">
+          <button
+            type="button"
+            onClick={() => setMode("type")}
+            className={`flex items-center gap-1 px-3 py-1 rounded-lg transition-all ${mode === "type" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+          >
+            <Search size={11} /> Type
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("map")}
+            className={`flex items-center gap-1 px-3 py-1 rounded-lg transition-all ${mode === "map" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+          >
+            <Map size={11} /> Pick on Map
+          </button>
+        </div>
+
         <button
           type="button"
-          onClick={() => setMode("type")}
-          className={`flex items-center gap-1 px-3 py-1 rounded-lg transition-all ${mode === "type" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+          onClick={handleFetchLocation}
+          disabled={fetchingGeo}
+          className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-bold transition-all disabled:opacity-50"
         >
-          <Search size={11} /> Type
-        </button>
-        <button
-          type="button"
-          onClick={() => setMode("map")}
-          className={`flex items-center gap-1 px-3 py-1 rounded-lg transition-all ${mode === "map" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
-        >
-          <Map size={11} /> Pick on Map
+          {fetchingGeo ? (
+            <Loader2 size={12} className="animate-spin text-emerald-600" />
+          ) : (
+            <Navigation size={12} className="text-emerald-600" />
+          )}
+          {fetchingGeo ? "Fetching GPS Location…" : "Fetch My Location"}
         </button>
       </div>
 

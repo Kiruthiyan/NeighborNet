@@ -15,6 +15,7 @@ from .alerts import VolunteerAlert, VolunteerAlertStatus
 from .common import OperatingMode, TaskLifecycle, TaskPriority
 from .disasters import DisasterEvent, DisasterNeed, DisasterNeedStatus, DisasterStatus
 from .tasks import CoordinationTask
+from .verification import TaskVerificationCode, VerificationCodeType, VerificationStatus
 
 __all__ = [
     # Base models
@@ -89,4 +90,8 @@ __all__ = [
     "VolunteerAlert",
     "VolunteerAlertStatus",
     "CoordinationTask",
+    # Verification
+    "TaskVerificationCode",
+    "VerificationCodeType",
+    "VerificationStatus",
 ]

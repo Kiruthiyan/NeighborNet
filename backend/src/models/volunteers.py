@@ -76,6 +76,7 @@ class Volunteer(TimestampedModel):
     special_skills: List[str] = Field(default_factory=list)  # driving, lifting, organizing
     skills: List[str] = Field(default_factory=list)  # food_delivery, logistics, driving, packing
     verified: bool = True
+    phone_verified: bool = True
     
     # Geographic coverage
     preferred_zones: List[str] = Field(default_factory=list)  # north, central, south
@@ -120,6 +121,8 @@ class Volunteer(TimestampedModel):
         return (
             self.status == VolunteerStatus.ACTIVE
             and self.availability_status == "available"
+            and self.verified
+            and self.phone_verified
         )
     
     def can_handle_delivery(self, delivery_requirements: Dict[str, Any]) -> bool:

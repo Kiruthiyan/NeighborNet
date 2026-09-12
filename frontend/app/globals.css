@@ -42,6 +42,23 @@ textarea {
   background: #94a3b8;
 }
 
+/* Custom Cool Scrollbar for Request Form Modal */
+.cool-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+.cool-scrollbar::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 9999px;
+}
+.cool-scrollbar::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #10b981 0%, #06b6d4 100%);
+  border-radius: 9999px;
+  border: 2px solid #ffffff;
+}
+.cool-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #059669 0%, #0891b2 100%);
+}
+
 @keyframes network-pulse {
   0%, 100% {
     transform: scale(1);

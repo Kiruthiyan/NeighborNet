@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
@@ -11,6 +11,7 @@ import {
 import { useAuth } from "../../../lib/auth";
 import { StatusBadge } from "../../../components/ui";
 import { apiGet } from "../../../lib/api";
+import { formatLocation } from "../../../lib/format";
 
 export default function CommunityDashboardPage() {
   const { user } = useAuth();
@@ -281,7 +282,7 @@ export default function CommunityDashboardPage() {
                         {(req.location || req.affected_location) && (
                           <span className="flex items-center gap-0.5">
                             <MapPin size={10} />
-                            {req.location || req.affected_location}
+                            {formatLocation(req.location || req.affected_location)}
                           </span>
                         )}
                       </div>
