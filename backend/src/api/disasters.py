@@ -32,6 +32,12 @@ class DisasterReportRequest(BaseModel):
     description: Optional[str] = None
     affected_location: Dict[str, Any] = Field(default_factory=dict)
     affected_zones: List[str] = Field(default_factory=list)
+    # Optional explicit region (one of KNOWN_REGIONS); if omitted, the service
+    # derives it from affected_zones on a best-effort basis - see
+    # coordination._resolve_region.
+    region: Optional[str] = None
+    affected_radius_km: Optional[float] = None
+    affected_communities: List[str] = Field(default_factory=list)
     severity: str = "high"
     evidence: List[str] = Field(default_factory=list)
 
@@ -77,6 +83,20 @@ async def list_pending_disasters():
     """Admin review queue: citizen reports awaiting verification."""
 
     return get_coordination_service().list_pending_disasters()
+
+
+@router.get("/by-region/{region}")
+async def list_disasters_by_region(region: str):
+    """Disasters scoped to one canonical region (see KNOWN_REGIONS), so a
+    resident or coordinator can see what's happening in one region without
+    seeing every other region's activity - Region A having a disaster must
+    never make Region B/C look affected too. Excludes pending/rejected
+    reports, same as the public list."""
+
+    try:
+        return get_coordination_service().list_disasters_by_region(region)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("", dependencies=[Depends(require_coordinator)])

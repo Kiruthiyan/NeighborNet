@@ -13,7 +13,14 @@ from .decisions import Decision, DecisionType, RiskClassification, DecisionOptio
 from .audit import StrandsAuditLog, AuditActionType, AuditSeverity, StrandsAgentContext
 from .alerts import VolunteerAlert, VolunteerAlertStatus
 from .common import OperatingMode, TaskLifecycle, TaskPriority
-from .disasters import DisasterEvent, DisasterNeed, DisasterNeedStatus, DisasterStatus
+from .disasters import (
+    KNOWN_REGIONS,
+    DisasterEvent,
+    DisasterNeed,
+    DisasterNeedStatus,
+    DisasterStatus,
+    normalize_region,
+)
 from .tasks import CoordinationTask
 from .verification import TaskVerificationCode, VerificationCodeType, VerificationStatus
 
@@ -87,6 +94,8 @@ __all__ = [
     "DisasterNeed",
     "DisasterNeedStatus",
     "DisasterStatus",
+    "KNOWN_REGIONS",
+    "normalize_region",
     "VolunteerAlert",
     "VolunteerAlertStatus",
     "CoordinationTask",

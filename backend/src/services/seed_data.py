@@ -622,6 +622,7 @@ class SeedDataGenerator:
                 "lng": 79.8612,
             },
             affected_zones=["south"],
+            region="south",
             severity=TaskPriority.HIGH,
             status="active",
             created_by="user_admin_demo",

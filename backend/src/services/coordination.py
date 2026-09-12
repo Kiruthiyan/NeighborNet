@@ -29,6 +29,7 @@ from src.models import (
     EventType,
     Invitation,
     InventoryBatch,
+    KNOWN_REGIONS,
     OperatingMode,
     Request,
     RequestStatus,
@@ -45,6 +46,7 @@ from src.models import (
     Volunteer,
     VolunteerAlert,
     VolunteerAlertStatus,
+    normalize_region,
 )
 from src.services.dynamo_store import get_dynamo_store
 from src.services.seed_data import generate_seed_data
@@ -79,6 +81,40 @@ class DisasterReviewStateError(ValueError):
     isn't PENDING_VALIDATION (already reviewed, or never a citizen report in
     the first place). Subclasses ValueError for the same reason as
     DisasterNotVerifiedError above; the API layer maps this to 409."""
+
+
+def _resolve_region(payload: Dict[str, object], affected_zones: List[str]) -> Optional[str]:
+    """Region is the canonical geographic scope for a disaster (see
+    DisasterEvent.region / normalize_region). Uses an explicit `region` in
+    the payload if given (raises ValueError if it isn't a known region),
+    otherwise best-effort derives it from the first affected zone that
+    happens to match a known region name. Falls back to None (unspecified)
+    rather than failing outright - `affected_zones` may carry finer-grained
+    sub-area tags that aren't themselves region names."""
+
+    explicit = payload.get("region")
+    if explicit:
+        return normalize_region(str(explicit))
+    for zone in affected_zones:
+        try:
+            return normalize_region(zone)
+        except ValueError:
+            continue
+    return None
+
+
+def _parse_radius(value: object) -> Optional[float]:
+    """Parse/validate an optional affected_radius_km payload value."""
+
+    if value is None:
+        return None
+    try:
+        radius = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Invalid affected_radius_km: {value!r}") from exc
+    if radius <= 0:
+        raise ValueError("affected_radius_km must be positive")
+    return radius
 
 
 @dataclass
@@ -564,13 +600,19 @@ class CoordinationService:
 
         needs_payload = payload.get("needs") or []
         disaster_id = str(payload.get("disaster_id") or f"disaster_{len(self.state.disasters)+1}")
+        affected_zones = list(payload.get("affected_zones", ["south"]))
+        region = _resolve_region(payload, affected_zones)
+        affected_radius_km = _parse_radius(payload.get("affected_radius_km"))
         disaster = DisasterEvent(
             disaster_id=disaster_id,
             type=str(payload.get("type", "flood")),
             title=str(payload.get("title", "Flood detected")),
             description=str(payload.get("description", "")),
             affected_location=dict(payload.get("affected_location", {})),
-            affected_zones=list(payload.get("affected_zones", ["south"])),
+            affected_zones=affected_zones,
+            region=region,
+            affected_radius_km=affected_radius_km,
+            affected_communities=[str(c) for c in (payload.get("affected_communities") or [])],
             severity=TaskPriority(str(payload.get("severity", "high")).lower()),
             created_by=str(payload.get("created_by", "admin")),
         )
@@ -623,8 +665,16 @@ class CoordinationService:
         except ValueError as exc:
             raise ValueError(f"Invalid severity: {payload.get('severity')!r}") from exc
 
+        region = _resolve_region(payload, affected_zones)
+        affected_radius_km = _parse_radius(payload.get("affected_radius_km"))
+        affected_communities = [
+            str(item).strip() for item in (payload.get("affected_communities") or []) if str(item).strip()
+        ]
+
         evidence = [str(item) for item in (payload.get("evidence") or [])]
-        duplicate_of = self._find_duplicate_disaster(disaster_type, affected_zones, affected_location)
+        duplicate_of = self._find_duplicate_disaster(
+            disaster_type, affected_zones, affected_location, region
+        )
 
         disaster = DisasterEvent(
             type=disaster_type,
@@ -632,6 +682,9 @@ class CoordinationService:
             description=str(payload.get("description") or ""),
             affected_location=affected_location,
             affected_zones=affected_zones,
+            region=region,
+            affected_radius_km=affected_radius_km,
+            affected_communities=affected_communities,
             severity=severity,
             status=DisasterStatus.PENDING_VALIDATION,
             reported_by=reporter_id,
@@ -651,14 +704,21 @@ class CoordinationService:
         disaster_type: str,
         affected_zones: List[str],
         affected_location: Dict[str, object],
+        region: Optional[str] = None,
         window_hours: int = 24,
     ) -> Optional[str]:
-        """Best-effort duplicate detection: same type, overlapping zone or
-        identical location, reported within the last `window_hours`, and not
-        already resolved. Returns the existing disaster_id if found, so the
-        new report can be flagged rather than silently created as if it were
-        unrelated - it is still created (not dropped) so a coordinator can
-        triage/merge it during verification."""
+        """Best-effort duplicate detection: same type, and (overlapping zone,
+        identical location, or same canonical region), reported within the
+        last `window_hours`, and not already resolved. Returns the existing
+        disaster_id if found, so the new report can be flagged rather than
+        silently created as if it were unrelated - it is still created (not
+        dropped) so a coordinator can triage/merge it during verification.
+
+        Comparing `region` (not just raw `affected_zones` strings) is what
+        catches two reports of the same incident phrased with slightly
+        different zone text but the same canonical region - the whole reason
+        `region` is validated/normalized (see normalize_region) rather than
+        left as free text."""
 
         cutoff = datetime.now() - timedelta(hours=window_hours)
         zone_set = set(affected_zones)
@@ -673,9 +733,24 @@ class CoordinationService:
             same_location = bool(
                 affected_location and affected_location == existing.affected_location
             )
-            if same_zone or same_location:
+            same_region = bool(region and existing.region and region == existing.region)
+            if same_zone or same_location or same_region:
                 return existing.disaster_id
         return None
+
+    def list_disasters_by_region(self, region: str) -> List[DisasterEvent]:
+        """Disasters (excluding pending/rejected reports) scoped to one
+        canonical region - lets a resident or coordinator see what's
+        happening in their own region without seeing every other region's
+        activity. Raises ValueError for an unrecognized region."""
+
+        normalized = normalize_region(region)
+        hidden = {DisasterStatus.PENDING_VALIDATION, DisasterStatus.REJECTED}
+        return [
+            disaster
+            for disaster in self.state.disasters
+            if disaster.region == normalized and disaster.status not in hidden
+        ]
 
     def list_pending_disasters(self) -> List[DisasterEvent]:
         """Admin review queue: citizen reports awaiting verification."""

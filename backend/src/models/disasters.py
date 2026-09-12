@@ -4,10 +4,32 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from .base import TimestampedModel, generate_id
 from .common import TaskPriority
+
+# The demo's fixed set of geographic regions (matches seed_data.zones).
+# Deliberately small/closed for the MVP's one-city-district scope (see
+# README "MVP Boundaries") rather than accepting arbitrary free text, so a
+# typo ("South" vs "south") can never silently create an unmatched region -
+# that's what "multiple disasters must remain independently identifiable"
+# and "Region B/C must not automatically enter disaster mode" actually rest
+# on: regions have to compare equal reliably.
+KNOWN_REGIONS = ("north", "central", "south")
+
+
+def normalize_region(value: str) -> str:
+    """Case/whitespace-insensitive canonical form of a region name, e.g.
+    " North " -> "north". Raises ValueError if it isn't one of
+    KNOWN_REGIONS."""
+
+    normalized = str(value).strip().lower()
+    if normalized not in KNOWN_REGIONS:
+        raise ValueError(
+            f"Unknown region {value!r} - must be one of {', '.join(KNOWN_REGIONS)}"
+        )
+    return normalized
 
 
 class DisasterStatus(str, Enum):
@@ -63,6 +85,18 @@ class DisasterEvent(TimestampedModel):
     description: Optional[str] = None
     affected_location: Dict[str, Any] = Field(default_factory=dict)
     affected_zones: List[str] = Field(default_factory=list)
+
+    # Regional scope (feature/regional-disaster-management). `region` is the
+    # canonical geographic scope, validated against KNOWN_REGIONS - this is
+    # what a disaster in Region A being independent of Region B/C actually
+    # relies on: two disasters only ever compare equal in region if their
+    # `region` values are the same normalized string.  `affected_radius_km`
+    # and `affected_communities` are supplementary geographic detail; they
+    # don't gate any behavior, they're just recorded.
+    region: Optional[str] = None
+    affected_radius_km: Optional[float] = None
+    affected_communities: List[str] = Field(default_factory=list)
+
     severity: TaskPriority = TaskPriority.HIGH
     start_time: datetime = Field(default_factory=datetime.now)
     status: DisasterStatus = DisasterStatus.ACTIVE
@@ -106,3 +140,17 @@ class DisasterEvent(TimestampedModel):
     @property
     def is_pending_validation(self) -> bool:
         return self.status == DisasterStatus.PENDING_VALIDATION
+
+    @field_validator("region")
+    @classmethod
+    def _validate_region(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        return normalize_region(value)
+
+    @field_validator("affected_radius_km")
+    @classmethod
+    def _validate_radius(cls, value: Optional[float]) -> Optional[float]:
+        if value is not None and value <= 0:
+            raise ValueError("affected_radius_km must be positive")
+        return value
