@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { Panel, Table, StatusBadge, EmptyState } from "../../../components/ui";
 import { apiGet, request, cancelInventoryBatch } from "../../../lib/api";
+import { useAuth } from "../../../lib/auth";
 
 // ─── Catalog ──────────────────────────────────────────────────────────────────
 
@@ -162,6 +163,7 @@ const INITIAL_DONATIONS = [
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function CommunityDonationsPage() {
+  const { user } = useAuth();
   const [resources, setResources]           = useState<any[]>(INITIAL_DONATIONS);
   const [loading, setLoading]               = useState(false);
   const [view, setView]                     = useState<"list" | "add">("list");
@@ -208,12 +210,19 @@ export default function CommunityDonationsPage() {
       if (!Array.isArray(data) || data.length === 0) {
         data = await apiGet<any[]>("/resources", []);
       }
-      if (Array.isArray(data) && data.length > 0) {
-        setResources(data.slice(0, 3));
+      if (Array.isArray(data) && data.length > 0 && user) {
+        // This is "My Donations" - show this signer's own batches, not
+        // whichever 3 happened to be first in the whole system's
+        // inventory (which, with hundreds of seeded items, was almost
+        // never this user's own donation). Newest first.
+        const mine = data
+          .filter((item) => item.donor_org_id === user.user_id)
+          .reverse();
+        if (mine.length > 0) setResources(mine);
       }
     } catch { /* silent fallback */ }
   };
-  useEffect(() => { loadResources(); }, []);
+  useEffect(() => { loadResources(); }, [user]);
 
   const handleCancel = async (batchId: string) => {
     if (!confirm("Cancel this donation? It will stop being matched, and any in-progress delivery will be flagged for the coordinator to reassign.")) return;
