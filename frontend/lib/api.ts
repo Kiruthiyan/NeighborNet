@@ -550,3 +550,114 @@ export function instructAgent(instruction: string): Promise<AgentInstructionResu
     body: JSON.stringify({ instruction })
   });
 }
+
+// ─── Cancellation (feature/resource-allocation) ────────────────────────────
+// Uses `request` (not `apiPost`) so ownership (403) and state-transition
+// (409) errors surface to the caller instead of silently degrading.
+
+export function cancelInventoryBatch(batchId: string) {
+  return request<{ batch: Record<string, unknown> }>(`/resources/${batchId}/cancel`, {
+    method: "POST"
+  });
+}
+
+export function cancelRequest(requestId: string) {
+  return request<{ request: Record<string, unknown> }>(`/requests/${requestId}/cancel`, {
+    method: "POST"
+  });
+}
+
+// ─── Disaster reporting & verification (feature/disaster-reporting,
+// feature/disaster-verification, feature/regional-disaster-management) ────
+
+export interface DisasterReportPayload {
+  type: string;
+  title: string;
+  description?: string;
+  affected_zones?: string[];
+  region?: string;
+  severity?: string;
+  evidence?: string[];
+}
+
+export function reportDisaster(payload: DisasterReportPayload): Promise<DisasterEvent> {
+  // Any authenticated user (not coordinator-only) - see POST
+  // /api/disasters/report. Uses `request` so a 400 (missing location, bad
+  // region/severity) surfaces as a real error the form can display.
+  return request<DisasterEvent>("/disasters/report", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function getPendingDisasters() {
+  return apiGet<DisasterEvent[]>("/disasters/pending", []);
+}
+
+export function getDisastersByRegion(region: string) {
+  return apiGet<DisasterEvent[]>(`/disasters/by-region/${region}`, []);
+}
+
+export function verifyDisaster(
+  disasterId: string,
+  payload: { notes?: string; severity?: string } = {}
+): Promise<DisasterEvent> {
+  return request<DisasterEvent>(`/disasters/${disasterId}/verify`, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function rejectDisaster(
+  disasterId: string,
+  reason: string,
+  notes?: string
+): Promise<DisasterEvent> {
+  return request<DisasterEvent>(`/disasters/${disasterId}/reject`, {
+    method: "POST",
+    body: JSON.stringify({ reason, notes })
+  });
+}
+
+// ─── Cross-region assistance (feature/cross-region-assistance) ────────────
+
+export interface CrossRegionAssistanceResult {
+  region: string;
+  resource_type: string;
+  quantity_needed: number;
+  local_available: number;
+  shortfall: number;
+  cross_region_candidates: Array<{
+    region: string;
+    available_surplus: number;
+    batch_ids: string[];
+  }>;
+}
+
+export function getCrossRegionAssistance(
+  region: string,
+  resourceType: string,
+  quantityNeeded: number
+): Promise<CrossRegionAssistanceResult> {
+  const params = new URLSearchParams({
+    region,
+    resource_type: resourceType,
+    quantity_needed: String(quantityNeeded)
+  });
+  return request<CrossRegionAssistanceResult>(`/requests/cross-region-assistance?${params}`);
+}
+
+// ─── Movement restrictions (feature/movement-restrictions) ─────────────────
+
+export function getZoneRestrictions() {
+  return apiGet<{ restricted_zones: string[] }>("/disruptions/zone-restrictions", {
+    restricted_zones: []
+  });
+}
+
+export function setZoneRestriction(zone: string, restricted: boolean) {
+  return request<{ restricted_zones: string[] }>("/disruptions/zone-restrictions", {
+    method: "POST",
+    body: JSON.stringify({ zone, restricted })
+  });
+}

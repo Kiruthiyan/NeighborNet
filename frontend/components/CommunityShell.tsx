@@ -31,6 +31,7 @@ export default function CommunityShell({ children }: { children: React.ReactNode
     { label: "My Requests", href: "/community/requests", icon: HeartHandshake },
     { label: "My Donations", href: "/community/donations", icon: Package },
     { label: "Volunteer Tasks", href: "/community/volunteer", icon: CheckSquare },
+    { label: "Report a Disaster", href: "/community/report-disaster", icon: ShieldAlert },
     { label: "Alerts", href: "/community/alerts", icon: Bell },
     { label: "Activity", href: "/community/activity", icon: Activity },
     { label: "Profile", href: "/community/profile", icon: User },

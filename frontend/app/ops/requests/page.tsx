@@ -1,15 +1,43 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { HeartHandshake, Filter, Search } from "lucide-react";
-import { Panel, Table, StatusBadge, EmptyState } from "../../../components/ui";
-import { apiGet } from "../../../lib/api";
+import { HeartHandshake, Filter, Search, Globe2, AlertTriangle, Loader2 } from "lucide-react";
+import { Panel, Table, StatusBadge, EmptyState, Badge } from "../../../components/ui";
+import { apiGet, getCrossRegionAssistance, type CrossRegionAssistanceResult } from "../../../lib/api";
+
+const REGIONS = ["north", "central", "south"];
+const RESOURCE_TYPES = [
+  "prepared_meal", "fresh_produce", "pantry_item", "frozen_food", "dairy",
+  "beverages", "food", "water", "medical", "clothing", "equipment"
+];
 
 export default function OpsRequestsPage() {
   const [requests, setRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
+
+  // Cross-region assistance check (feature/cross-region-assistance)
+  const [crRegion, setCrRegion] = useState("south");
+  const [crResourceType, setCrResourceType] = useState("equipment");
+  const [crQuantity, setCrQuantity] = useState(50);
+  const [crResult, setCrResult] = useState<CrossRegionAssistanceResult | null>(null);
+  const [crLoading, setCrLoading] = useState(false);
+  const [crError, setCrError] = useState<string | null>(null);
+
+  const handleCheckCrossRegion = async () => {
+    setCrLoading(true);
+    setCrError(null);
+    setCrResult(null);
+    try {
+      const result = await getCrossRegionAssistance(crRegion, crResourceType, crQuantity);
+      setCrResult(result);
+    } catch (err) {
+      setCrError(err instanceof Error ? err.message : "Failed to check cross-region assistance");
+    } finally {
+      setCrLoading(false);
+    }
+  };
 
   useEffect(() => {
     async function loadRequests() {
@@ -73,6 +101,84 @@ export default function OpsRequestsPage() {
           </select>
         </div>
       </div>
+
+      <Panel dark title="Cross-Region Assistance Check" icon={Globe2}>
+        <p className="text-xs text-slate-400 mb-4">
+          Preview whether another region has surplus that could help fulfill a shortfall in a region -
+          never commits anything, and never dips into another region's own pending demand.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
+          <div>
+            <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">Region in need</label>
+            <select
+              value={crRegion}
+              onChange={(e) => setCrRegion(e.target.value)}
+              className="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-xs text-white"
+            >
+              {REGIONS.map((r) => (<option key={r} value={r}>{r[0].toUpperCase() + r.slice(1)}</option>))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">Resource type</label>
+            <select
+              value={crResourceType}
+              onChange={(e) => setCrResourceType(e.target.value)}
+              className="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-xs text-white"
+            >
+              {RESOURCE_TYPES.map((rt) => (<option key={rt} value={rt}>{rt}</option>))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">Quantity needed</label>
+            <input
+              type="number"
+              min={0}
+              value={crQuantity}
+              onChange={(e) => setCrQuantity(Number(e.target.value))}
+              className="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-xs text-white"
+            />
+          </div>
+          <button
+            onClick={handleCheckCrossRegion}
+            disabled={crLoading}
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white text-xs font-bold px-4 py-2"
+          >
+            {crLoading ? <Loader2 size={14} className="animate-spin" /> : <Globe2 size={14} />}
+            Check
+          </button>
+        </div>
+
+        {crError && (
+          <div className="mt-3 flex items-center gap-2 rounded-lg bg-rose-950/60 border border-rose-500/40 p-3 text-xs text-rose-300">
+            <AlertTriangle size={14} /> {crError}
+          </div>
+        )}
+
+        {crResult && (
+          <div className="mt-4 p-4 rounded-xl border border-slate-700 bg-slate-900 text-xs text-slate-300 space-y-2">
+            <p>
+              Local available in <strong className="text-white">{crResult.region}</strong>:{" "}
+              <strong className="text-white">{crResult.local_available}</strong> — Shortfall:{" "}
+              <strong className={crResult.shortfall > 0 ? "text-rose-400" : "text-emerald-400"}>
+                {crResult.shortfall}
+              </strong>
+            </p>
+            {crResult.shortfall === 0 ? (
+              <p className="text-emerald-400">Local supply covers the need — no cross-region assistance required.</p>
+            ) : crResult.cross_region_candidates.length === 0 ? (
+              <p className="text-amber-400">No other region currently has surplus to offer.</p>
+            ) : (
+              <div className="flex flex-wrap gap-2 pt-1">
+                {crResult.cross_region_candidates.map((c) => (
+                  <Badge key={c.region} tone="blue">
+                    {c.region}: {c.available_surplus} surplus ({c.batch_ids.length} batch{c.batch_ids.length === 1 ? "" : "es"})
+                  </Badge>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </Panel>
 
       <Panel dark title={`All Community Requests (${filtered.length})`}>
         {loading ? (

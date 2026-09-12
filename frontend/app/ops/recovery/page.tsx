@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
-import { RotateCcw, AlertTriangle, ShieldCheck, Zap, Plus, X } from "lucide-react";
+import { useState, useEffect } from "react";
+import { RotateCcw, AlertTriangle, ShieldCheck, Zap, Plus, X, Lock, Unlock, Loader2 } from "lucide-react";
 import { Panel, StatusBadge } from "../../../components/ui";
-import { request } from "../../../lib/api";
+import { request, getZoneRestrictions, setZoneRestriction } from "../../../lib/api";
+
+const ZONES = ["north", "central", "south"];
 
 export default function OpsRecoveryPage() {
   const [showInjectModal, setShowInjectModal] = useState(false);
@@ -11,6 +13,42 @@ export default function OpsRecoveryPage() {
   const [disruptionType, setDisruptionType] = useState("ROAD_BLOCKED");
   const [severity, setSeverity] = useState("MEDIUM");
   const [submitting, setSubmitting] = useState(false);
+
+  // Zone movement restrictions (feature/movement-restrictions)
+  const [restrictedZones, setRestrictedZones] = useState<string[]>([]);
+  const [zonesLoading, setZonesLoading] = useState(true);
+  const [togglingZone, setTogglingZone] = useState<string | null>(null);
+  const [zoneError, setZoneError] = useState<string | null>(null);
+
+  const loadZoneRestrictions = async () => {
+    setZonesLoading(true);
+    try {
+      const data = await getZoneRestrictions();
+      setRestrictedZones(data.restricted_zones || []);
+    } catch (err) {
+      console.error("Failed to load zone restrictions", err);
+    } finally {
+      setZonesLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadZoneRestrictions();
+  }, []);
+
+  const handleToggleZone = async (zone: string) => {
+    const currentlyRestricted = restrictedZones.includes(zone);
+    setTogglingZone(zone);
+    setZoneError(null);
+    try {
+      const data = await setZoneRestriction(zone, !currentlyRestricted);
+      setRestrictedZones(data.restricted_zones || []);
+    } catch (err) {
+      setZoneError(err instanceof Error ? err.message : "Failed to update zone restriction");
+    } finally {
+      setTogglingZone(null);
+    }
+  };
 
   const recoveryItems = [
     {
@@ -72,6 +110,60 @@ export default function OpsRecoveryPage() {
           <Zap size={16} /> Simulate Disruption
         </button>
       </div>
+
+      <Panel dark title="Zone Movement Restrictions" icon={Lock}>
+        <p className="text-xs text-slate-400 mb-4">
+          Lock down a zone (road closures, quarantine, an unsafe disaster area) and every future volunteer
+          match - normal or disaster - excludes it, even for the closest otherwise-eligible volunteer.
+        </p>
+        {zoneError && (
+          <div className="mb-4 flex items-center gap-2 rounded-xl bg-rose-950/60 border border-rose-500/40 p-3 text-xs text-rose-300">
+            <AlertTriangle size={16} /> {zoneError}
+          </div>
+        )}
+        {zonesLoading ? (
+          <div className="p-4 text-center text-xs text-slate-400">Loading zone status...</div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {ZONES.map((zone) => {
+              const restricted = restrictedZones.includes(zone);
+              return (
+                <div
+                  key={zone}
+                  className={`p-4 rounded-xl border flex items-center justify-between ${
+                    restricted ? "border-rose-500/40 bg-rose-950/30" : "border-slate-700 bg-slate-900"
+                  }`}
+                >
+                  <div>
+                    <p className="text-sm font-bold text-white capitalize">{zone}</p>
+                    <p className={`text-[11px] font-semibold ${restricted ? "text-rose-400" : "text-emerald-400"}`}>
+                      {restricted ? "Movement Restricted" : "Open"}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => handleToggleZone(zone)}
+                    disabled={togglingZone === zone}
+                    className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold disabled:opacity-50 ${
+                      restricted
+                        ? "bg-emerald-600 hover:bg-emerald-500 text-white"
+                        : "bg-rose-600 hover:bg-rose-500 text-white"
+                    }`}
+                  >
+                    {togglingZone === zone ? (
+                      <Loader2 size={13} className="animate-spin" />
+                    ) : restricted ? (
+                      <Unlock size={13} />
+                    ) : (
+                      <Lock size={13} />
+                    )}
+                    {restricted ? "Lift" : "Restrict"}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Panel>
 
       <Panel dark title="Recovery Recommendations Matrix">
         <div className="overflow-x-auto">

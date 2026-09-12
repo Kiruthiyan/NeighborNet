@@ -4,10 +4,10 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import {
   Package, Plus, X, AlertCircle, Clock, MapPin, CheckCircle2,
   Utensils, Droplets, Heart, Shirt, Wrench, Search, ArrowRight,
-  Loader2, ChevronLeft, Gift, Tag, Hash, AlignLeft, Sparkles
+  Loader2, ChevronLeft, Gift, Tag, Hash, AlignLeft, Sparkles, Ban
 } from "lucide-react";
 import { Panel, Table, StatusBadge, EmptyState } from "../../../components/ui";
-import { apiGet, request } from "../../../lib/api";
+import { apiGet, request, cancelInventoryBatch } from "../../../lib/api";
 
 // ─── Catalog ──────────────────────────────────────────────────────────────────
 
@@ -171,6 +171,8 @@ export default function CommunityDonationsPage() {
 
   // Verification modal state for Donor Pickup Code
   const [selectedDonationOTP, setSelectedDonationOTP] = useState<any | null>(null);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [cancelError, setCancelError] = useState<string | null>(null);
 
   // form state
   const [category, setCategory]             = useState<CategoryId>("FOOD");
@@ -212,6 +214,20 @@ export default function CommunityDonationsPage() {
     } catch { /* silent fallback */ }
   };
   useEffect(() => { loadResources(); }, []);
+
+  const handleCancel = async (batchId: string) => {
+    if (!confirm("Cancel this donation? It will stop being matched, and any in-progress delivery will be flagged for the coordinator to reassign.")) return;
+    setCancellingId(batchId);
+    setCancelError(null);
+    try {
+      await cancelInventoryBatch(batchId);
+      await loadResources();
+    } catch (err) {
+      setCancelError(err instanceof Error ? err.message : "Failed to cancel donation");
+    } finally {
+      setCancellingId(null);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -255,12 +271,17 @@ export default function CommunityDonationsPage() {
       notes,
     };
 
-    // Best-effort API persistence
+    // Best-effort API persistence - capture the real created batch (with its
+    // real batch_id) and swap it in for the optimistic placeholder above, so
+    // Cancel (which needs the real batch_id) works on it immediately.
     try {
       const body = JSON.stringify(payloadObj);
-      await request("/inventory", { method: "POST", body }).catch(async () => {
-        await request("/resources", { method: "POST", body }).catch(() => null);
+      const created: any = await request("/inventory", { method: "POST", body }).catch(async () => {
+        return await request("/resources", { method: "POST", body }).catch(() => null);
       });
+      if (created && created.batch_id) {
+        setResources((prev) => prev.map((r) => (r.id === generatedId ? created : r)));
+      }
     } catch {
       /* Degrade gracefully if backend unavailable */
     }
@@ -345,31 +366,57 @@ export default function CommunityDonationsPage() {
               </p>
             </EmptyState>
           ) : (
-            <Table columns={["ID", "Item", "Category", "Qty", "Pickup Location", "Pickup Verification", "Status"]}>
-              {resources.map((item, idx) => {
-                const sampleOtp = `${789200 + (idx + 1)}`;
-                return (
-                  <tr key={item.id || item.resource_id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="px-4 py-3 font-mono font-bold text-xs text-slate-700">{item.id || item.resource_id || "RES-001"}</td>
-                    <td className="px-4 py-3 font-semibold text-slate-900">{item.item_name || item.resource_type}</td>
-                    <td className="px-4 py-3 text-slate-500 text-xs">{item.resource_type}</td>
-                    <td className="px-4 py-3 text-slate-600 text-xs font-semibold">{item.quantity} {item.unit || "units"}</td>
-                    <td className="px-4 py-3 text-xs text-slate-600">
-                      <span className="flex items-center gap-1"><MapPin size={11} className="text-slate-400" />{item.pickup_location || "—"}</span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <button
-                        onClick={() => setSelectedDonationOTP({ ...item, pickup_otp: item.pickup_otp || sampleOtp })}
-                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-mono font-bold text-xs border border-emerald-200 transition-colors"
-                      >
-                        <QrCodeIcon size={13} /> {item.pickup_otp || sampleOtp}
-                      </button>
-                    </td>
-                    <td className="px-4 py-3"><StatusBadge status={item.status || "AVAILABLE"} pulse={item.status === "MATCHED"} /></td>
-                  </tr>
-                );
-              })}
-            </Table>
+            <>
+              {cancelError && (
+                <div className="mb-3 flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                  <AlertCircle size={14} /> {cancelError}
+                </div>
+              )}
+              <Table columns={["ID", "Item", "Category", "Qty", "Pickup Location", "Pickup Verification", "Status", "Actions"]}>
+                {resources.map((item, idx) => {
+                  const sampleOtp = `${789200 + (idx + 1)}`;
+                  const status = String(item.status || "AVAILABLE").toLowerCase();
+                  // Only real backend records (they have a batch_id) can be
+                  // cancelled through the real API - the bundled demo/mock
+                  // seed rows don't have one.
+                  const canCancel = Boolean(item.batch_id) && !["cancelled", "consumed"].includes(status);
+                  return (
+                    <tr key={item.id || item.resource_id || item.batch_id} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="px-4 py-3 font-mono font-bold text-xs text-slate-700">{item.batch_id || item.id || item.resource_id || "RES-001"}</td>
+                      <td className="px-4 py-3 font-semibold text-slate-900">{item.item_name || item.resource_type}</td>
+                      <td className="px-4 py-3 text-slate-500 text-xs">{item.resource_type}</td>
+                      <td className="px-4 py-3 text-slate-600 text-xs font-semibold">{item.quantity ?? item.quantity_available} {item.unit || "units"}</td>
+                      <td className="px-4 py-3 text-xs text-slate-600">
+                        <span className="flex items-center gap-1"><MapPin size={11} className="text-slate-400" />{item.pickup_location || "—"}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <button
+                          onClick={() => setSelectedDonationOTP({ ...item, pickup_otp: item.pickup_otp || sampleOtp })}
+                          className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-mono font-bold text-xs border border-emerald-200 transition-colors"
+                        >
+                          <QrCodeIcon size={13} /> {item.pickup_otp || sampleOtp}
+                        </button>
+                      </td>
+                      <td className="px-4 py-3"><StatusBadge status={item.status || "AVAILABLE"} pulse={item.status === "MATCHED"} /></td>
+                      <td className="px-4 py-3">
+                        {canCancel ? (
+                          <button
+                            onClick={() => handleCancel(item.batch_id)}
+                            disabled={cancellingId === item.batch_id}
+                            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 disabled:opacity-50 text-rose-700 font-semibold text-xs border border-rose-200 transition-colors"
+                          >
+                            {cancellingId === item.batch_id ? <Loader2 size={12} className="animate-spin" /> : <Ban size={12} />}
+                            Cancel
+                          </button>
+                        ) : (
+                          <span className="text-[11px] text-slate-400">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </Table>
+            </>
           )}
         </Panel>
       </div>
