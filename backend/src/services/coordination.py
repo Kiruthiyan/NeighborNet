@@ -24,6 +24,7 @@ from src.models import (
     DietaryMetadata,
     DisasterEvent,
     DisasterNeed,
+    DisasterStatus,
     Event,
     EventType,
     Invitation,
@@ -63,6 +64,14 @@ TABLE_STRANDS_AUDIT_LOGS = "StrandsAuditLogs"
 TABLE_VERIFICATION = "TaskVerificationCodes"
 
 logger = structlog.get_logger(__name__)
+
+
+class DisasterNotVerifiedError(ValueError):
+    """Raised when an action requires an ACTIVE/MONITORING disaster but the
+    target is still PENDING_VALIDATION (or already RESOLVED). Subclasses
+    ValueError so existing callers that only catch ValueError still work,
+    but the API layer catches this first to return 409 instead of the 404/400
+    used for "not found"/bad-input ValueErrors."""
 
 
 @dataclass
@@ -577,10 +586,99 @@ class CoordinationService:
         self._record_event(f"Disaster created: {disaster.title}", "disaster")
         return disaster
 
+    def report_disaster(self, reporter_id: str, payload: Dict[str, object]) -> DisasterEvent:
+        """Citizen-reported disaster (any authenticated user).
+
+        Unlike `create_disaster` (coordinator-only, goes ACTIVE immediately),
+        a report always starts PENDING_VALIDATION and never auto-activates -
+        `dispatch_disaster`/`assign_disaster_tasks` both refuse to act on it
+        until a coordinator verifies/activates it (see
+        feature/disaster-verification). This is what enforces "a normal user
+        must not automatically activate a disaster."
+        """
+
+        disaster_type = str(payload.get("type") or "").strip()
+        title = str(payload.get("title") or "").strip()
+        affected_location = dict(payload.get("affected_location") or {})
+        affected_zones = [
+            str(zone).strip() for zone in (payload.get("affected_zones") or []) if str(zone).strip()
+        ]
+
+        if not disaster_type:
+            raise ValueError("Disaster type is required")
+        if not title:
+            raise ValueError("Title is required")
+        if not affected_location and not affected_zones:
+            raise ValueError("A disaster report must include a location or an affected zone")
+
+        try:
+            severity = TaskPriority(str(payload.get("severity", "high")).lower())
+        except ValueError as exc:
+            raise ValueError(f"Invalid severity: {payload.get('severity')!r}") from exc
+
+        evidence = [str(item) for item in (payload.get("evidence") or [])]
+        duplicate_of = self._find_duplicate_disaster(disaster_type, affected_zones, affected_location)
+
+        disaster = DisasterEvent(
+            type=disaster_type,
+            title=title,
+            description=str(payload.get("description") or ""),
+            affected_location=affected_location,
+            affected_zones=affected_zones,
+            severity=severity,
+            status=DisasterStatus.PENDING_VALIDATION,
+            reported_by=reporter_id,
+            created_by=reporter_id,
+            evidence=evidence,
+            is_duplicate=duplicate_of is not None,
+            duplicate_of=duplicate_of,
+        )
+        self.state.disasters.append(disaster)
+        self._persist(TABLE_DISASTERS, disaster)
+        note = f" [possible duplicate of {duplicate_of}]" if duplicate_of else ""
+        self._record_event(f"Disaster reported (pending validation): {disaster.title}{note}", "disaster")
+        return disaster
+
+    def _find_duplicate_disaster(
+        self,
+        disaster_type: str,
+        affected_zones: List[str],
+        affected_location: Dict[str, object],
+        window_hours: int = 24,
+    ) -> Optional[str]:
+        """Best-effort duplicate detection: same type, overlapping zone or
+        identical location, reported within the last `window_hours`, and not
+        already resolved. Returns the existing disaster_id if found, so the
+        new report can be flagged rather than silently created as if it were
+        unrelated - it is still created (not dropped) so a coordinator can
+        triage/merge it during verification."""
+
+        cutoff = datetime.now() - timedelta(hours=window_hours)
+        zone_set = set(affected_zones)
+        for existing in self.state.disasters:
+            if existing.type != disaster_type:
+                continue
+            if existing.status == DisasterStatus.RESOLVED:
+                continue
+            if existing.created_at < cutoff:
+                continue
+            same_zone = bool(zone_set and zone_set.intersection(existing.affected_zones))
+            same_location = bool(
+                affected_location and affected_location == existing.affected_location
+            )
+            if same_zone or same_location:
+                return existing.disaster_id
+        return None
+
     def dispatch_disaster(self, disaster_id: str) -> List[VolunteerAlert]:
         """Alert nearby verified volunteers for an active disaster."""
 
         disaster = self.get_disaster(disaster_id)
+        if not disaster.is_active:
+            raise DisasterNotVerifiedError(
+                f"Disaster {disaster_id} is '{disaster.status.value}' - it must be "
+                "verified/active before volunteer alerts can be sent."
+            )
         volunteers = self._eligible_disaster_volunteers(disaster)
         existing = {
             (alert.volunteer_id, alert.disaster_id)
@@ -632,6 +730,11 @@ class CoordinationService:
         capacity cap)."""
 
         disaster = self.get_disaster(disaster_id)
+        if not disaster.is_active:
+            raise DisasterNotVerifiedError(
+                f"Disaster {disaster_id} is '{disaster.status.value}' - it must be "
+                "verified/active before volunteers can be assigned to tasks."
+            )
         existing_need_ids = {
             task.need_id
             for task in self.state.tasks
