@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useRef, useCallback } from "react";
+import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import {
   HeartHandshake,
   Plus,
@@ -36,6 +36,7 @@ import { StatusBadge } from "../../../components/ui";
 import { useAuth } from "../../../lib/auth";
 import LocationPicker, { LocationResult } from "../../../components/LocationPicker";
 import { QRCodeDisplay } from "../../../components/QRCodeDisplay";
+import { apiGet, request as apiRequest, cancelRequest as apiCancelRequest } from "../../../lib/api";
 
 // Types
 export type RequestMode = "NORMAL" | "DISASTER";
@@ -256,6 +257,54 @@ const INITIAL_REQUESTS: RequestItem[] = [
   }
 ];
 
+// ─── Real backend <-> this page's richer display shape ────────────────────
+// The backend's Request model (src/models/requests.py) is much leaner than
+// RequestItem above (no notifications/matched_donor/assigned_volunteer -
+// those track a linked Allocation/CoordinationTask, not the request
+// itself). This maps what the backend actually returns into RequestItem
+// with honest empty defaults for the fields it doesn't have, rather than
+// fabricating narrative content for a request nothing has actually
+// matched/assigned yet.
+const BACKEND_STATUS_TO_UI: Record<string, RequestStatus> = {
+  pending: "PENDING",
+  allocated: "MATCHED",
+  partially_fulfilled: "ASSIGNED",
+  fulfilled: "COMPLETED",
+  cancelled: "CANCELLED",
+  expired: "CANCELLED",
+};
+
+function backendRequestToItem(r: any): RequestItem {
+  const urgency = String(r.urgency_level || "medium").toUpperCase() as UrgencyLevel;
+  return {
+    id: r.request_id,
+    request_id: r.request_id,
+    mode: "NORMAL",
+    type: r.resource_type,
+    resource_name: r.purpose || String(r.resource_type || "").replace(/_/g, " "),
+    quantity: r.quantity_requested ?? 0,
+    unit: "units",
+    affected_location: r.region ? r.region[0].toUpperCase() + r.region.slice(1) : "Not specified",
+    address_or_landmark: r.notes || "",
+    zone: r.region || "",
+    latitude: 0,
+    longitude: 0,
+    is_in_disaster_zone: false,
+    reason: r.notes || r.purpose || "",
+    people_affected: r.recipient_count || 0,
+    urgency,
+    needed_by_date: r.required_by ? new Date(r.required_by).toLocaleDateString() : "",
+    needed_by_time: r.required_by ? new Date(r.required_by).toLocaleTimeString() : "",
+    status: BACKEND_STATUS_TO_UI[r.status] || "PENDING",
+    risk_classification: "GREEN",
+    created_at: r.created_at,
+    // Honest: nothing has actually matched/assigned yet unless
+    // quantity_fulfilled says otherwise.
+    matched_resource: r.quantity_fulfilled > 0 ? `${r.quantity_fulfilled} of ${r.quantity_requested} fulfilled` : undefined,
+    notifications: [],
+  };
+}
+
 // Active Disasters for Disaster Mode
 const ACTIVE_DISASTERS = [
   {
@@ -382,8 +431,30 @@ const ITEM_SUGGESTIONS: { label: string; unit: string; category: string; icon: s
 export default function CommunityRequestsPage() {
   const { user } = useAuth();
 
-  // Requests state
-  const [requestsList, setRequestsList] = useState<RequestItem[]>(INITIAL_REQUESTS);
+  // Requests state - starts empty and loads this user's real requests from
+  // the backend; falls back to the bundled demo set only if the signed-in
+  // user genuinely has none yet, so real data always takes priority.
+  const [requestsList, setRequestsList] = useState<RequestItem[]>([]);
+  const [requestsLoaded, setRequestsLoaded] = useState(false);
+
+  const loadMyRequests = useCallback(async () => {
+    if (!user) return;
+    try {
+      const data = await apiGet<any[]>("/requests", []);
+      const mine = Array.isArray(data)
+        ? data.filter((r) => r.requesting_org_id === user.user_id).map(backendRequestToItem).reverse()
+        : [];
+      setRequestsList(mine.length > 0 ? mine : INITIAL_REQUESTS);
+    } catch {
+      setRequestsList(INITIAL_REQUESTS);
+    } finally {
+      setRequestsLoaded(true);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    loadMyRequests();
+  }, [loadMyRequests]);
 
   // Filters & Search
   const [searchQuery, setSearchQuery] = useState("");
@@ -517,7 +588,24 @@ export default function CommunityRequestsPage() {
   };
 
   // Submit Request
-  const handleSubmit = (e: React.FormEvent) => {
+  // Best-effort category -> backend ResourceType guess, mirroring the same
+  // fallback the donations page's backend counterpart already does
+  // (create_inventory_batch's res_type_map) - the form's free-text catalog
+  // doesn't map 1:1 onto the backend enum, so this is deliberately loose.
+  const guessResourceType = (label: string): string => {
+    const t = label.toLowerCase();
+    if (t.includes("water")) return "water";
+    if (t.includes("medical") || t.includes("first aid") || t.includes("medic")) return "medical";
+    if (t.includes("cloth") || t.includes("blanket") || t.includes("shelter")) return "clothing";
+    if (t.includes("equipment") || t.includes("tool") || t.includes("generator") || t.includes("tarp")) return "equipment";
+    if (t.includes("meal") || t.includes("cooked") || t.includes("curry") || t.includes("rice")) return "prepared_meal";
+    if (t.includes("produce") || t.includes("vegetable") || t.includes("fruit")) return "fresh_produce";
+    return "pantry_item";
+  };
+
+  const [createSubmitting, setCreateSubmitting] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     runValidation();
 
@@ -525,76 +613,50 @@ export default function CommunityRequestsPage() {
     const validQty = Number(formQuantity) > 0;
     if (!validItem || !validQty || !formLocation) return;
 
-    const zone = deriveZoneFromLocation(formLocation);
-    const newReqId = `REQ-${Math.floor(1000 + Math.random() * 9000)}`;
-    // Infer needed_by_date from urgency
-    const urgencyToDate: Record<UrgencyLevel, string> = {
-      CRITICAL: "Today (ASAP)",
-      HIGH: "Today",
-      MEDIUM: "Today",
-      LOW: "This week",
-    };
-
-    const newRequest: RequestItem = {
-      id: `req-${Date.now()}`,
-      request_id: newReqId,
-      mode: formMode,
-      disaster_name: formMode === "DISASTER" ? "Flood – Zone B" : undefined,
-      disaster_id: formMode === "DISASTER" ? formDisasterId : undefined,
-      type: formType,
-      resource_name: formResourceName,
-      quantity: Number(formQuantity),
-      unit: formUnit,
-      affected_location: formLocation.address,
-      address_or_landmark: formLocation.address,
-      zone,
-      latitude: formLocation.lat,
-      longitude: formLocation.lng,
-      is_in_disaster_zone: zone === "Zone A" || zone === "Zone B",
-      reason: formReason || `${formResourceName} needed at ${formLocation.address}.`,
-      people_affected: formPeopleCount !== "" ? Number(formPeopleCount) : 0,
-      urgency: formUrgency,
-      needed_by_date: urgencyToDate[formUrgency],
-      needed_by_time: formUrgency === "CRITICAL" ? "ASAP" : "",
-      status: "PENDING",
-      risk_classification: safetyRisk,
-      created_at: new Date().toISOString(),
-      matched_resource: `${formQuantity} ${formUnit} of ${formResourceName}`,
-      matched_donor: "Community Food Bank / Local Depot",
-      assigned_volunteer: "Awaiting assignment",
-      notifications: [
-        {
-          id: `n-${Date.now()}-1`,
-          title: "Request Created & Validated",
-          message: "Passed deterministic checks. Service area verified.",
-          timestamp: "Just now",
-          type: "success"
-        },
-        {
-          id: `n-${Date.now()}-2`,
-          title: `RiskClassifier: ${safetyRisk}`,
-          message: safetyExplanation,
-          timestamp: "Just now",
-          type: "info"
-        },
-        {
-          id: `n-${Date.now()}-3`,
-          title: "PlanningEngine Matching Active",
-          message: "Searching compatible resources and nearest volunteer responders.",
-          timestamp: "Just now",
-          type: "info"
-        }
-      ]
-    };
-
-    setRequestsList([newRequest, ...requestsList]);
-    setLatestCreatedId(newReqId);
-    setShowCreateModal(false);
-    setShowConfirmation(true);
+    setCreateSubmitting(true);
+    try {
+      const created = await apiRequest<any>("/requests", {
+        method: "POST",
+        body: JSON.stringify({
+          resource_type: guessResourceType(`${formType} ${formResourceName}`),
+          quantity_requested: Number(formQuantity),
+          urgency_level: formUrgency.toLowerCase(),
+          purpose: formResourceName,
+          notes: formReason || `${formResourceName} needed at ${formLocation.address}.`,
+          recipient_count: formPeopleCount !== "" ? Number(formPeopleCount) : undefined,
+        }),
+      });
+      await loadMyRequests();
+      setLatestCreatedId(created.request_id);
+      setShowCreateModal(false);
+      setShowConfirmation(true);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to create request");
+    } finally {
+      setCreateSubmitting(false);
+    }
   };
 
-  const handleCancelRequest = (reqId: string) => {
+  const handleCancelRequest = async (reqId: string) => {
     if (!confirm("Are you sure you want to cancel this assistance request?")) return;
+
+    // Real backend requests are id'd like "req_<hex>" (see generate_id in
+    // src/models/base.py); the bundled demo rows use "REQ-1042"-style ids
+    // and were never persisted, so there's nothing to cancel server-side.
+    if (reqId.startsWith("req_")) {
+      try {
+        await apiCancelRequest(reqId);
+        await loadMyRequests();
+        if (selectedDetailRequest?.request_id === reqId) {
+          setSelectedDetailRequest((prev) => (prev ? { ...prev, status: "CANCELLED" } : null));
+        }
+        return;
+      } catch (err) {
+        alert(err instanceof Error ? err.message : "Failed to cancel request");
+        return;
+      }
+    }
+
     setRequestsList((prev) =>
       prev.map((r) => (r.request_id === reqId || r.id === reqId ? { ...r, status: "CANCELLED" } : r))
     );
@@ -1478,13 +1540,14 @@ export default function CommunityRequestsPage() {
                   </button>
                   <button
                     type="submit"
-                    className={`rounded-2xl px-6 py-2.5 text-xs font-black text-white shadow-lg flex items-center gap-2 transition-all cursor-pointer active:scale-95 ${
+                    disabled={createSubmitting}
+                    className={`rounded-2xl px-6 py-2.5 text-xs font-black text-white shadow-lg flex items-center gap-2 transition-all cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
                       formMode === "DISASTER"
                         ? "bg-rose-600 hover:bg-rose-700 shadow-rose-600/25"
                         : "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/25"
                     }`}
                   >
-                    {formMode === "DISASTER" ? "Dispatch Emergency Request" : "Submit Request"} <ArrowRight size={15} />
+                    {createSubmitting ? "Submitting..." : formMode === "DISASTER" ? "Dispatch Emergency Request" : "Submit Request"} <ArrowRight size={15} />
                   </button>
                 </div>
               </div>
