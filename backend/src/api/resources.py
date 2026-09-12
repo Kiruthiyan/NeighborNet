@@ -17,12 +17,20 @@ router = APIRouter()
 def _get_optional_donor(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer_scheme),
 ) -> User:
-    """Resolve donor user if authenticated, or return a demo donor user."""
+    """Resolve donor user if authenticated, or return a demo donor user.
+
+    An authenticated user must actually hold donor capability - otherwise any
+    signed-in account (recipient-only, say) could record donations under its
+    own id. Anonymous requests fall back to the demo donor for the unauthenticated
+    demo flow.
+    """
     if credentials is not None and credentials.credentials:
         claims = decode_access_token(credentials.credentials)
         if claims and "sub" in claims:
             user = get_coordination_service().get_user(claims["sub"])
             if user is not None and user.is_active:
+                if not user.is_donor:
+                    raise HTTPException(status_code=403, detail="Donor access required")
                 return user
 
     return User(
