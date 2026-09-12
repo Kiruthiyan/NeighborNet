@@ -29,6 +29,7 @@ from src.models import (
     EventType,
     Invitation,
     InventoryBatch,
+    InventoryStatus,
     KNOWN_REGIONS,
     OperatingMode,
     Request,
@@ -83,6 +84,21 @@ class DisasterReviewStateError(ValueError):
     DisasterNotVerifiedError above; the API layer maps this to 409."""
 
 
+class ResourceOwnershipError(ValueError):
+    """Raised when a caller tries to cancel/modify a resource (inventory
+    batch, request) they don't own and isn't a coordinator/admin. Subclasses
+    ValueError so it's still caught by a bare `except ValueError`, but the
+    API layer catches this first to return 403 instead of 400/404."""
+
+
+class InvalidStateTransitionError(ValueError):
+    """Raised when an action would move a resource (inventory batch,
+    request, task) from a state that doesn't allow it - e.g. cancelling
+    something already cancelled/fulfilled/consumed. Subclasses ValueError
+    for the same reason as the others above; the API layer maps this to
+    409."""
+
+
 def _resolve_region(payload: Dict[str, object], affected_zones: List[str]) -> Optional[str]:
     """Region is the canonical geographic scope for a disaster (see
     DisasterEvent.region / normalize_region). Uses an explicit `region` in
@@ -135,6 +151,11 @@ class CoordinationState:
     invitations: List[Invitation] = field(default_factory=list)
     strands_audit_logs: List[StrandsAuditLog] = field(default_factory=list)
     verification_codes: List[TaskVerificationCode] = field(default_factory=list)
+    # Zones currently under a system-wide movement restriction (lockdown,
+    # quarantine, closed roads, a declared restricted/dangerous zone) - see
+    # feature/movement-restrictions. Distinct from a specific volunteer's
+    # own travel_restricted/restricted_zones.
+    restricted_zones: List[str] = field(default_factory=list)
 
 
 class CoordinationService:
@@ -146,6 +167,13 @@ class CoordinationService:
         self.state = CoordinationState()
         self.store = get_dynamo_store()
         self._task_lock = threading.Lock()
+        # Guards inventory/request quantity mutations (matching + cancellation)
+        # the same way _task_lock guards task assignment - see
+        # create_normal_task/cancel_inventory_batch/cancel_request. Separate
+        # lock because these protect different resources (inventory/request
+        # quantities vs. task/volunteer assignment) and serializing all of it
+        # behind one lock would block unrelated operations on each other.
+        self._allocation_lock = threading.Lock()
         # Recovery plans staged behind a pending AMBER Decision, keyed by
         # decision_id, not applied to operational state until a coordinator
         # approves them. Intentionally in-memory only (see approve_decision) -
@@ -479,16 +507,24 @@ class CoordinationService:
         """Plan and store one normal food delivery task, persisting the
         allocation it consumes so the same supply can never be matched
         twice. Each call advances state - repeat calls produce a new task
-        against the next remaining match, or None once nothing matches."""
+        against the next remaining match, or None once nothing matches.
 
-        result = self.planning.create_normal_task(
-            self.state.inventory,
-            self.state.requests,
-            self.state.volunteers,
-        )
-        if not result:
-            return None
-        task, allocation = result
+        Locked the same way atomic_accept_task locks task assignment:
+        matching reads and mutates live quantity_allocated/quantity_fulfilled
+        on shared Request/InventoryBatch objects, so two concurrent calls
+        must not interleave their read-then-write, or the same unallocated
+        units could be double-matched."""
+
+        with self._allocation_lock:
+            result = self.planning.create_normal_task(
+                self.state.inventory,
+                self.state.requests,
+                self.state.volunteers,
+                restricted_zones=set(self.state.restricted_zones),
+            )
+            if not result:
+                return None
+            task, allocation = result
 
         self.state.tasks.append(task)
         self.state.allocations.append(allocation)
@@ -536,10 +572,12 @@ class CoordinationService:
         lat_val = payload.get("latitude")
         lng_val = payload.get("longitude")
         pickup_otp = str(payload.get("pickup_otp") or random.randint(700000, 999999))
+        region = normalize_region(str(payload["region"])) if payload.get("region") else None
 
         dietary_payload = payload.get("dietary_metadata") or {}
         batch = InventoryBatch(
             resource_type=res_type,
+            region=region,
             quantity_available=quantity,
             description=item_name,
             item_name=item_name,
@@ -565,6 +603,55 @@ class CoordinationService:
         )
         return batch
 
+    def cancel_inventory_batch(self, batch_id: str, requester: User) -> Dict[str, Any]:
+        """Donor cancellation of a surplus donation.
+
+        Only the donor who created the batch (or a coordinator/admin) may
+        cancel it. Cancelling always stops the batch from being matched
+        further (status -> CANCELLED), regardless of how much is already
+        allocated - the already-committed portion isn't silently deleted:
+        any non-completed task built from this batch is flagged for
+        recovery (same mechanism as cancel_and_recover_task) so a
+        replacement can be found rather than a volunteer showing up to a
+        pickup that no longer exists."""
+
+        with self._allocation_lock:
+            batch = next((b for b in self.state.inventory if b.batch_id == batch_id), None)
+            if batch is None:
+                raise ValueError(f"Inventory batch not found: {batch_id}")
+
+            if not (requester.is_admin or requester.is_coordinator or batch.donor_org_id == requester.user_id):
+                raise ResourceOwnershipError(
+                    "Only the donor who created this batch (or a coordinator) can cancel it"
+                )
+
+            if batch.status in (InventoryStatus.CANCELLED, InventoryStatus.CONSUMED):
+                raise InvalidStateTransitionError(
+                    f"Inventory batch {batch_id} is already '{batch.status.value}' and cannot be cancelled"
+                )
+
+            batch.status = InventoryStatus.CANCELLED
+            batch.update_timestamp()
+            self._persist(TABLE_INVENTORY, batch)
+
+        affected_task_ids = [
+            task.task_id
+            for task in self.state.tasks
+            if task.resource_batch_id == batch_id and task.is_active
+        ]
+        recovery_result = None
+        if affected_task_ids:
+            recovery_result = self.recover(
+                {
+                    "task_ids": affected_task_ids,
+                    "reason": f"Donor cancelled inventory batch {batch_id}",
+                    "create_amber_decision": False,
+                }
+            )
+
+        self._record_event(f"Inventory batch cancelled by donor: {batch_id}", "normal")
+        return {"batch": batch, "affected_task_ids": affected_task_ids, "recovery_result": recovery_result}
+
     def create_request(self, payload: Dict[str, object], requester: User) -> Request:
         """Record a community resource request."""
 
@@ -574,10 +661,12 @@ class CoordinationService:
 
         required_by = payload.get("required_by") or (datetime.now() + timedelta(hours=24))
         dietary_payload = payload.get("dietary_restrictions") or {}
+        region = normalize_region(str(payload["region"])) if payload.get("region") else None
         request = Request(
             requesting_org_id=str(payload.get("requesting_org_id") or requester.user_id),
             resource_type=ResourceType(str(payload.get("resource_type", "pantry_item")).lower()),
             quantity_requested=quantity,
+            region=region,
             urgency_level=UrgencyLevel(str(payload.get("urgency_level", "medium")).lower()),
             required_by=required_by,
             dietary_restrictions=DietaryMetadata(**dietary_payload) if dietary_payload else DietaryMetadata(),
@@ -594,6 +683,56 @@ class CoordinationService:
             "normal",
         )
         return request
+
+    def cancel_request(self, request_id: str, requester: User) -> Dict[str, Any]:
+        """Requester cancellation of a community resource request.
+
+        Only the requester who created it (or a coordinator/admin) may
+        cancel it. Cancelling stops any further matching against it
+        (status -> CANCELLED) regardless of how much is already fulfilled -
+        already-committed deliveries aren't silently discarded: any
+        non-completed task tied to this request is flagged for recovery."""
+
+        with self._allocation_lock:
+            request = next((r for r in self.state.requests if r.request_id == request_id), None)
+            if request is None:
+                raise ValueError(f"Request not found: {request_id}")
+
+            if not (
+                requester.is_admin
+                or requester.is_coordinator
+                or request.requesting_org_id == requester.user_id
+            ):
+                raise ResourceOwnershipError(
+                    "Only the requester who created this request (or a coordinator) can cancel it"
+                )
+
+            if request.status in (RequestStatus.CANCELLED, RequestStatus.FULFILLED):
+                raise InvalidStateTransitionError(
+                    f"Request {request_id} is already '{request.status.value}' and cannot be cancelled"
+                )
+
+            request.status = RequestStatus.CANCELLED
+            request.update_timestamp()
+            self._persist(TABLE_REQUESTS, request)
+
+        affected_task_ids = [
+            task.task_id
+            for task in self.state.tasks
+            if task.request_id == request_id and task.is_active
+        ]
+        recovery_result = None
+        if affected_task_ids:
+            recovery_result = self.recover(
+                {
+                    "task_ids": affected_task_ids,
+                    "reason": f"Requester cancelled request {request_id}",
+                    "create_amber_decision": False,
+                }
+            )
+
+        self._record_event(f"Request cancelled by requester: {request_id}", "normal")
+        return {"request": request, "affected_task_ids": affected_task_ids, "recovery_result": recovery_result}
 
     def create_disaster(self, payload: Dict[str, object]) -> DisasterEvent:
         """Create admin disaster event."""
@@ -737,6 +876,113 @@ class CoordinationService:
             if same_zone or same_location or same_region:
                 return existing.disaster_id
         return None
+
+    def set_zone_movement_restriction(self, zone: str, restricted: bool) -> List[str]:
+        """Toggle a system-wide movement restriction on a zone (lockdown,
+        quarantine, closed roads, a declared dangerous/restricted zone).
+        Every future volunteer-matching call (normal or disaster) excludes
+        that zone until it's lifted - see VolunteerMatcher.score. Returns
+        the current full list of restricted zones."""
+
+        zone = str(zone).strip()
+        if not zone:
+            raise ValueError("zone is required")
+        zones = set(self.state.restricted_zones)
+        if restricted:
+            zones.add(zone)
+        else:
+            zones.discard(zone)
+        self.state.restricted_zones = sorted(zones)
+        self._record_event(
+            f"Zone '{zone}' movement restriction {'activated' if restricted else 'lifted'}",
+            "disaster",
+        )
+        return self.state.restricted_zones
+
+    def find_cross_region_supply(
+        self, region: str, resource_type: ResourceType, quantity_needed: int
+    ) -> Dict[str, Any]:
+        """Preview whether other regions can help fulfill a shortfall in
+        `region` for `resource_type`, without committing any allocation.
+
+        Same-region (or region-unset, legacy) AVAILABLE unallocated supply
+        is counted first. If that falls short of `quantity_needed`, other
+        regions' AVAILABLE unallocated supply is offered - but only the
+        surplus left over after that region's own outstanding pending
+        demand for the same resource type, so Region B's normal requests
+        are never silently starved to help Region A (see
+        feature/cross-region-assistance). This only reports candidates; an
+        actual transfer still goes through the normal allocation path
+        (create_normal_task / a coordinator's manual match) like any other
+        donation.
+        """
+
+        normalized_region = normalize_region(region)
+        if quantity_needed < 0:
+            raise ValueError("quantity_needed cannot be negative")
+
+        def _unallocated(batches: List[InventoryBatch]) -> int:
+            return sum(
+                batch.quantity_unallocated
+                for batch in batches
+                if batch.status == InventoryStatus.AVAILABLE and not batch.is_expired
+            )
+
+        local_batches = [
+            batch
+            for batch in self.state.inventory
+            if batch.resource_type == resource_type
+            and (batch.region == normalized_region or batch.region is None)
+        ]
+        local_available = _unallocated(local_batches)
+        shortfall = max(0, quantity_needed - local_available)
+
+        candidates: List[Dict[str, Any]] = []
+        if shortfall > 0:
+            for other_region in KNOWN_REGIONS:
+                if other_region == normalized_region:
+                    continue
+                other_batches = [
+                    batch
+                    for batch in self.state.inventory
+                    if batch.resource_type == resource_type and batch.region == other_region
+                ]
+                other_available = _unallocated(other_batches)
+                if other_available <= 0:
+                    continue
+
+                other_own_demand = sum(
+                    request.quantity_remaining
+                    for request in self.state.requests
+                    if request.resource_type == resource_type
+                    and request.region == other_region
+                    and request.status
+                    in (RequestStatus.PENDING, RequestStatus.PARTIALLY_FULFILLED)
+                )
+                surplus = max(0, other_available - other_own_demand)
+                if surplus > 0:
+                    candidates.append(
+                        {
+                            "region": other_region,
+                            "available_surplus": surplus,
+                            "batch_ids": [
+                                batch.batch_id
+                                for batch in other_batches
+                                if batch.status == InventoryStatus.AVAILABLE
+                                and not batch.is_expired
+                                and batch.quantity_unallocated > 0
+                            ],
+                        }
+                    )
+
+        return {
+            "region": normalized_region,
+            "resource_type": resource_type.value,
+            "quantity_needed": quantity_needed,
+            "local_available": local_available,
+            "shortfall": shortfall,
+            "cross_region_candidates": candidates,
+        }
 
     def list_disasters_by_region(self, region: str) -> List[DisasterEvent]:
         """Disasters (excluding pending/rejected reports) scoped to one
@@ -938,7 +1184,9 @@ class CoordinationService:
             if volunteer.volunteer_id in accepted_ids and volunteer.current_task_count == 0
         ]
         pending_disaster = disaster.model_copy(update={"needs": pending_needs})
-        tasks = self.planning.create_disaster_tasks(pending_disaster, volunteers)
+        tasks = self.planning.create_disaster_tasks(
+            pending_disaster, volunteers, restricted_zones=set(self.state.restricted_zones)
+        )
         self.state.tasks.extend(tasks)
         for task in tasks:
             self._persist(TABLE_TASKS, task)

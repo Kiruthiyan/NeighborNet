@@ -1,7 +1,7 @@
 """Deterministic volunteer scoring for normal and disaster tasks."""
 
 from dataclasses import dataclass
-from typing import Iterable, List
+from typing import Iterable, List, Optional, Set
 
 from src.models import CoordinationTask, Volunteer
 
@@ -18,8 +18,22 @@ class VolunteerMatch:
 class VolunteerMatcher:
     """Score volunteers without LLM capacity/safety decisions."""
 
-    def score(self, volunteer: Volunteer, task: CoordinationTask) -> VolunteerMatch:
-        """Score one volunteer for one task."""
+    def score(
+        self,
+        volunteer: Volunteer,
+        task: CoordinationTask,
+        restricted_zones: Optional[Set[str]] = None,
+    ) -> VolunteerMatch:
+        """Score one volunteer for one task.
+
+        `restricted_zones` is the system-wide set of zones currently under
+        movement restriction (lockdown/quarantine/closed roads - see
+        CoordinationService.restricted_zones), separate from a volunteer's
+        own `travel_restricted`/`restricted_zones`. Either kind of
+        restriction disqualifies the volunteer for a task in that zone
+        regardless of distance - this is what lets a farther-away but
+        authorized volunteer be selected over a nearer but restricted one.
+        """
 
         score = 0.0
         reasons: List[str] = []
@@ -29,6 +43,25 @@ class VolunteerMatcher:
 
         if not volunteer.verified:
             return VolunteerMatch(volunteer, 0.0, ["Volunteer not verified"])
+
+        if volunteer.travel_restricted:
+            return VolunteerMatch(volunteer, 0.0, ["Volunteer is under a personal movement restriction"])
+
+        task_zone_for_restriction = None
+        if task.destination:
+            task_zone_for_restriction = task.destination.get("zone")
+        if not task_zone_for_restriction and task.affected_zones:
+            task_zone_for_restriction = task.affected_zones[0]
+
+        if task_zone_for_restriction:
+            if task_zone_for_restriction in volunteer.restricted_zones:
+                return VolunteerMatch(
+                    volunteer, 0.0, [f"Volunteer is not authorized to enter zone '{task_zone_for_restriction}'"]
+                )
+            if restricted_zones and task_zone_for_restriction in restricted_zones:
+                return VolunteerMatch(
+                    volunteer, 0.0, [f"Zone '{task_zone_for_restriction}' is under movement restriction"]
+                )
 
         if task.required_capacity and volunteer.max_carry_capacity:
             if volunteer.max_carry_capacity < task.required_capacity:
@@ -81,9 +114,12 @@ class VolunteerMatcher:
         return VolunteerMatch(volunteer, round(score, 2), reasons)
 
     def rank(
-        self, volunteers: Iterable[Volunteer], task: CoordinationTask
+        self,
+        volunteers: Iterable[Volunteer],
+        task: CoordinationTask,
+        restricted_zones: Optional[Set[str]] = None,
     ) -> List[VolunteerMatch]:
         """Rank volunteers by deterministic fit."""
 
-        matches = [self.score(volunteer, task) for volunteer in volunteers]
+        matches = [self.score(volunteer, task, restricted_zones) for volunteer in volunteers]
         return sorted(matches, key=lambda match: match.score, reverse=True)

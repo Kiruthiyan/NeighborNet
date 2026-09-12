@@ -4,9 +4,10 @@ from datetime import datetime
 from enum import Enum
 from typing import Dict, Any, Optional
 
-from pydantic import Field, validator
+from pydantic import Field, field_validator, validator
 
 from .base import TimestampedModel, generate_id
+from .disasters import normalize_region
 from .inventory import ResourceType, DietaryMetadata
 
 
@@ -60,6 +61,10 @@ class Request(TimestampedModel):
     resource_type: ResourceType
     quantity_requested: int
     quantity_fulfilled: int = 0
+
+    # Canonical region (feature/cross-region-assistance), optional/unset for
+    # older records - see normalize_region.
+    region: Optional[str] = None
     
     # Timing
     urgency_level: UrgencyLevel = UrgencyLevel.MEDIUM
@@ -129,6 +134,13 @@ class Request(TimestampedModel):
         
         return True
     
+    @field_validator("region")
+    @classmethod
+    def _validate_region(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        return normalize_region(value)
+
     def _matches_dietary_requirements(self, dietary_info: DietaryMetadata) -> bool:
         """Check if inventory matches dietary restrictions."""
         restrictions = self.dietary_restrictions

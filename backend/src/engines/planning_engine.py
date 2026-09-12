@@ -1,7 +1,7 @@
 """Deterministic planning for normal and disaster coordination tasks."""
 
 from datetime import datetime, timedelta
-from typing import Iterable, List, Optional, Tuple
+from typing import Iterable, List, Optional, Set, Tuple
 
 from src.models import (
     Allocation,
@@ -21,6 +21,19 @@ from src.models import (
 from .risk_classifier import RiskClassifier
 from .volunteer_matcher import VolunteerMatcher
 
+# Lower number = served first when assigning scarce accepted volunteers to
+# disaster needs (see create_disaster_tasks). Without this, needs were
+# assigned in whatever order they happened to appear in DisasterEvent.needs,
+# so a LOW-priority need listed first could claim the only fitting volunteer
+# ahead of a CRITICAL one listed later - the actual bug class
+# feature/disaster-priority-matching is about.
+_NEED_PRIORITY_ORDER = {
+    TaskPriority.CRITICAL: 0,
+    TaskPriority.HIGH: 1,
+    TaskPriority.MEDIUM: 2,
+    TaskPriority.LOW: 3,
+}
+
 
 class PlanningEngine:
     """Generate validated task proposals for both operating modes."""
@@ -34,6 +47,7 @@ class PlanningEngine:
         inventory: Iterable[InventoryBatch],
         requests: Iterable[Request],
         volunteers: Iterable[Volunteer],
+        restricted_zones: Optional[Set[str]] = None,
     ) -> Optional[Tuple[CoordinationTask, Allocation]]:
         """Create one normal delivery task from the best obvious match, and
         persist the allocation onto the matched Request/InventoryBatch
@@ -97,21 +111,35 @@ class PlanningEngine:
                     required_capacity=quantity,
                     expected_completion_time=datetime.now() + timedelta(hours=2),
                 )
-                return self.assign_best_volunteer(task, volunteers), allocation
+                return self.assign_best_volunteer(task, volunteers, restricted_zones), allocation
         return None
 
     def create_disaster_tasks(
         self,
         disaster: DisasterEvent,
         accepted_volunteers: Iterable[Volunteer],
+        restricted_zones: Optional[Set[str]] = None,
     ) -> List[CoordinationTask]:
-        """Create tasks from disaster needs and assign best accepted volunteers."""
+        """Create tasks from disaster needs and assign best accepted
+        volunteers, most urgent need first.
+
+        Accepted volunteers are a scarce, shared pool - once one is assigned
+        to a need they're removed from consideration for the rest of this
+        call. Needs are processed CRITICAL -> HIGH -> MEDIUM -> LOW (see
+        _NEED_PRIORITY_ORDER) rather than in whatever order they happen to
+        be listed, so a more urgent need is never starved of the only
+        fitting volunteer by a less urgent one that was simply declared
+        first.
+        """
 
         tasks: List[CoordinationTask] = []
         remaining_volunteers = list(accepted_volunteers)
-        for need in disaster.needs:
+        sorted_needs = sorted(
+            disaster.needs, key=lambda need: _NEED_PRIORITY_ORDER.get(need.priority, 99)
+        )
+        for need in sorted_needs:
             task = self._task_from_need(disaster, need)
-            assigned = self.assign_best_volunteer(task, remaining_volunteers)
+            assigned = self.assign_best_volunteer(task, remaining_volunteers, restricted_zones)
             if assigned.volunteer_id:
                 remaining_volunteers = [
                     volunteer
@@ -122,11 +150,14 @@ class PlanningEngine:
         return tasks
 
     def assign_best_volunteer(
-        self, task: CoordinationTask, volunteers: Iterable[Volunteer]
+        self,
+        task: CoordinationTask,
+        volunteers: Iterable[Volunteer],
+        restricted_zones: Optional[Set[str]] = None,
     ) -> CoordinationTask:
         """Assign best-scored volunteer if risk is GREEN."""
 
-        ranked = self.matcher.rank(volunteers, task)
+        ranked = self.matcher.rank(volunteers, task, restricted_zones)
         best = next((match for match in ranked if match.score > 0), None)
         if not best:
             task.status = TaskLifecycle.NEEDS_ATTENTION

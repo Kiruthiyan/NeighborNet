@@ -4,9 +4,10 @@ from datetime import datetime
 from enum import Enum
 from typing import Dict, Any, Optional, List
 
-from pydantic import Field, validator
+from pydantic import Field, field_validator, validator
 
 from .base import TimestampedModel, generate_id
+from .disasters import normalize_region
 
 
 class ResourceType(str, Enum):
@@ -32,6 +33,7 @@ class InventoryStatus(str, Enum):
     EXPIRED = "expired"
     CONSUMED = "consumed"
     DAMAGED = "damaged"
+    CANCELLED = "cancelled"
 
 
 class DietaryMetadata(TimestampedModel):
@@ -85,6 +87,10 @@ class InventoryBatch(TimestampedModel):
     # Location
     location_id: str
     storage_location: Optional[str] = None  # specific location within facility
+    # Canonical region (feature/cross-region-assistance), optional/unset for
+    # older records - see normalize_region. Lets cross-region matching find
+    # surplus in another region without guessing from free-text fields.
+    region: Optional[str] = None
     pickup_location: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
@@ -136,7 +142,14 @@ class InventoryBatch(TimestampedModel):
             not self.is_expired and
             self.quantity_unallocated >= quantity
         )
-    
+
+    @field_validator("region")
+    @classmethod
+    def _validate_region(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        return normalize_region(value)
+
     class Config:
         json_encoders = {
             ResourceType: lambda v: v.value,

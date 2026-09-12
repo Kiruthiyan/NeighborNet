@@ -5,9 +5,14 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from src.auth.dependencies import get_current_user
 from src.auth.security import decode_access_token
 from src.models.users import User, AccountType
-from src.services.coordination import get_coordination_service
+from src.services.coordination import (
+    InvalidStateTransitionError,
+    ResourceOwnershipError,
+    get_coordination_service,
+)
 
 _bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -60,5 +65,21 @@ async def create_inventory_batch(
         return get_coordination_service().create_inventory_batch(payload, donor)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/{batch_id}/cancel")
+async def cancel_inventory_batch(batch_id: str, user: User = Depends(get_current_user)):
+    """Donor cancels their own surplus donation (or a coordinator cancels
+    any). Any non-completed task already built from this batch is flagged
+    for recovery rather than silently left dangling."""
+
+    try:
+        return get_coordination_service().cancel_inventory_batch(batch_id, user)
+    except ResourceOwnershipError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except InvalidStateTransitionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 

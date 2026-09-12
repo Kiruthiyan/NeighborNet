@@ -84,6 +84,16 @@ class Volunteer(TimestampedModel):
     current_location: Optional[Dict[str, Any]] = None
     last_known_zone: Optional[str] = None
     max_travel_distance: Optional[float] = None  # in miles
+
+    # Movement restrictions (feature/movement-restrictions). Distinct from
+    # distance: a volunteer can be geographically close to a task's zone and
+    # still be ineligible for it (personal quarantine/lockdown, or a zone
+    # they aren't authorized/able to enter), while a farther-away but
+    # unrestricted volunteer is the correct assignment instead. See
+    # VolunteerMatcher.score and CoordinationService.restricted_zones for
+    # the zone-wide (e.g. closed roads/lockdown) counterpart.
+    travel_restricted: bool = False
+    restricted_zones: List[str] = Field(default_factory=list)
     
     # Availability
     availability: VolunteerAvailability = Field(default_factory=VolunteerAvailability)
