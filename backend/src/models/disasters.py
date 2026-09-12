@@ -27,6 +27,7 @@ class DisasterStatus(str, Enum):
     ACTIVE = "active"
     MONITORING = "monitoring"
     RESOLVED = "resolved"
+    REJECTED = "rejected"
 
 
 class DisasterNeedStatus(str, Enum):
@@ -80,6 +81,16 @@ class DisasterEvent(TimestampedModel):
     evidence: List[str] = Field(default_factory=list)
     is_duplicate: bool = False
     duplicate_of: Optional[str] = None
+
+    # Admin review trail (feature/disaster-verification). Set together by
+    # `verify_disaster`/`reject_disaster` - never client-supplied, always the
+    # authenticated coordinator's identity from their auth token.
+    reviewed_by: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+    review_notes: Optional[str] = None
+    # Populated only when status == REJECTED, e.g. "false_report",
+    # "duplicate", "incomplete", "malicious", or free text for "other".
+    rejection_reason: Optional[str] = None
 
     @property
     def is_active(self) -> bool:

@@ -6,8 +6,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from src.auth.dependencies import get_current_user, require_coordinator
+from src.models.disasters import DisasterStatus
 from src.models.users import User
-from src.services.coordination import DisasterNotVerifiedError, get_coordination_service
+from src.services.coordination import (
+    DisasterNotVerifiedError,
+    DisasterReviewStateError,
+    get_coordination_service,
+)
 
 
 router = APIRouter()
@@ -31,11 +36,47 @@ class DisasterReportRequest(BaseModel):
     evidence: List[str] = Field(default_factory=list)
 
 
+class DisasterReviewRequest(BaseModel):
+    """Body for verifying (activating) a pending disaster report."""
+
+    notes: Optional[str] = None
+    # Lets the reviewing coordinator correct an "uncertain severity" a
+    # citizen reporter may have gotten wrong, in the same call.
+    severity: Optional[str] = None
+
+
+class DisasterRejectRequest(BaseModel):
+    """Body for rejecting a pending disaster report.
+
+    `reason` should be one of "false_report", "duplicate", "incomplete",
+    "malicious", or "other" (free text accepted, not enum-enforced, so a
+    coordinator is never blocked from rejecting for an unanticipated reason).
+    """
+
+    reason: str = Field(..., min_length=1)
+    notes: Optional[str] = None
+
+
 @router.get("")
 async def list_disasters():
-    """List disaster events."""
+    """List disaster events visible to the general community.
 
-    return get_coordination_service().state.disasters
+    Deliberately excludes PENDING_VALIDATION (not yet reviewed) and REJECTED
+    (false/duplicate/malicious) reports - those are only visible to
+    coordinators via GET /api/disasters/pending, so an unverified or
+    debunked report is never presented to the public as a real disaster.
+    """
+
+    disasters = get_coordination_service().state.disasters
+    hidden = {DisasterStatus.PENDING_VALIDATION, DisasterStatus.REJECTED}
+    return [disaster for disaster in disasters if disaster.status not in hidden]
+
+
+@router.get("/pending", dependencies=[Depends(require_coordinator)])
+async def list_pending_disasters():
+    """Admin review queue: citizen reports awaiting verification."""
+
+    return get_coordination_service().list_pending_disasters()
 
 
 @router.post("", dependencies=[Depends(require_coordinator)])
@@ -103,6 +144,47 @@ async def assign_disaster_tasks(disaster_id: str):
     try:
         return get_coordination_service().assign_disaster_tasks(disaster_id)
     except DisasterNotVerifiedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/{disaster_id}/verify", dependencies=[Depends(require_coordinator)])
+async def verify_disaster(
+    disaster_id: str, payload: DisasterReviewRequest, user: User = Depends(get_current_user)
+):
+    """Coordinator/admin review step: PENDING_VALIDATION -> ACTIVE.
+
+    Only an authorized coordinator/admin can activate a disaster report -
+    this is the only path a citizen report can take to become ACTIVE and
+    become eligible for dispatch/assign.
+    """
+
+    try:
+        return get_coordination_service().verify_disaster(
+            user.user_id, disaster_id, notes=payload.notes, severity_override=payload.severity
+        )
+    except DisasterReviewStateError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/{disaster_id}/reject", dependencies=[Depends(require_coordinator)])
+async def reject_disaster(
+    disaster_id: str, payload: DisasterRejectRequest, user: User = Depends(get_current_user)
+):
+    """Coordinator/admin review step: PENDING_VALIDATION -> REJECTED.
+
+    Covers false reports, incomplete reports, duplicate/conflicting reports,
+    and malicious reports - `reason` records which.
+    """
+
+    try:
+        return get_coordination_service().reject_disaster(
+            user.user_id, disaster_id, reason=payload.reason, notes=payload.notes
+        )
+    except DisasterReviewStateError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

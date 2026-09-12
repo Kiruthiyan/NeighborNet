@@ -74,6 +74,13 @@ class DisasterNotVerifiedError(ValueError):
     used for "not found"/bad-input ValueErrors."""
 
 
+class DisasterReviewStateError(ValueError):
+    """Raised by verify_disaster/reject_disaster when the target disaster
+    isn't PENDING_VALIDATION (already reviewed, or never a citizen report in
+    the first place). Subclasses ValueError for the same reason as
+    DisasterNotVerifiedError above; the API layer maps this to 409."""
+
+
 @dataclass
 class CoordinationState:
     """Shared local state for demo workflows."""
@@ -669,6 +676,104 @@ class CoordinationService:
             if same_zone or same_location:
                 return existing.disaster_id
         return None
+
+    def list_pending_disasters(self) -> List[DisasterEvent]:
+        """Admin review queue: citizen reports awaiting verification."""
+
+        return [
+            disaster
+            for disaster in self.state.disasters
+            if disaster.status == DisasterStatus.PENDING_VALIDATION
+        ]
+
+    def verify_disaster(
+        self,
+        coordinator_id: str,
+        disaster_id: str,
+        notes: Optional[str] = None,
+        severity_override: Optional[str] = None,
+    ) -> DisasterEvent:
+        """Coordinator/admin review step: PENDING_VALIDATION -> ACTIVE.
+
+        `severity_override` lets the reviewer correct an "uncertain severity"
+        a citizen reporter may have gotten wrong, without requiring a
+        separate edit call. Only a PENDING_VALIDATION disaster can be
+        verified - this is the only path that promotes a report to ACTIVE,
+        and it always requires require_coordinator at the API layer."""
+
+        disaster = self.get_disaster(disaster_id)
+        if disaster.status != DisasterStatus.PENDING_VALIDATION:
+            raise DisasterReviewStateError(
+                f"Disaster {disaster_id} is '{disaster.status.value}' - only a "
+                "PENDING_VALIDATION report can be verified/activated."
+            )
+
+        if severity_override:
+            try:
+                disaster.severity = TaskPriority(str(severity_override).lower())
+            except ValueError as exc:
+                raise ValueError(f"Invalid severity: {severity_override!r}") from exc
+
+        disaster.status = DisasterStatus.ACTIVE
+        disaster.reviewed_by = coordinator_id
+        disaster.reviewed_at = datetime.now()
+        disaster.review_notes = notes
+        disaster.update_timestamp()
+        self._persist(TABLE_DISASTERS, disaster)
+        self._record_event(f"Disaster verified and activated: {disaster.title}", "disaster")
+        return disaster
+
+    def reject_disaster(
+        self,
+        coordinator_id: str,
+        disaster_id: str,
+        reason: str,
+        notes: Optional[str] = None,
+    ) -> DisasterEvent:
+        """Coordinator/admin review step: PENDING_VALIDATION -> REJECTED.
+
+        Covers false reports, incomplete reports, conflicting/duplicate
+        reports, and malicious reports - `reason` records which. When
+        rejecting a report already flagged as a duplicate (see
+        `_find_duplicate_disaster`), its evidence is folded into the
+        canonical disaster instead of being lost, so a corroborating report
+        still contributes even though it doesn't become its own incident."""
+
+        disaster = self.get_disaster(disaster_id)
+        if disaster.status != DisasterStatus.PENDING_VALIDATION:
+            raise DisasterReviewStateError(
+                f"Disaster {disaster_id} is '{disaster.status.value}' - only a "
+                "PENDING_VALIDATION report can be rejected."
+            )
+
+        reason = (reason or "").strip()
+        if not reason:
+            raise ValueError("A rejection reason is required")
+
+        disaster.status = DisasterStatus.REJECTED
+        disaster.reviewed_by = coordinator_id
+        disaster.reviewed_at = datetime.now()
+        disaster.review_notes = notes
+        disaster.rejection_reason = reason
+        disaster.update_timestamp()
+
+        if reason.lower() == "duplicate" and disaster.duplicate_of:
+            canonical = next(
+                (d for d in self.state.disasters if d.disaster_id == disaster.duplicate_of),
+                None,
+            )
+            if canonical is not None:
+                for item in disaster.evidence:
+                    if item not in canonical.evidence:
+                        canonical.evidence.append(item)
+                canonical.update_timestamp()
+                self._persist(TABLE_DISASTERS, canonical)
+
+        self._persist(TABLE_DISASTERS, disaster)
+        self._record_event(
+            f"Disaster report rejected ({disaster.rejection_reason}): {disaster.title}", "disaster"
+        )
+        return disaster
 
     def dispatch_disaster(self, disaster_id: str) -> List[VolunteerAlert]:
         """Alert nearby verified volunteers for an active disaster."""
