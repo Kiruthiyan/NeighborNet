@@ -127,6 +127,87 @@ start http://localhost:8000/docs
 
 ---
 
+## 12. `feature/resource-allocation` branch — new this round
+
+Everything below was added after the original guide above. Items marked **✅ verified** were already driven end-to-end in a real browser (not just read from source) before this was written; the rest still need your own pass. Do 12.1 → 12.8 in order — later ones assume accounts/data from earlier ones, same as the rest of this guide.
+
+Use two sessions throughout: **Tab A** logged in as the seeded admin/coordinator, **Tab B** (a private/incognito window) as a fresh plain signup — call it "the resident."
+
+### 12.1 My Donations — real create/cancel ✅ verified
+
+**Tab B → My Donations**
+
+1. On Profile, toggle **Donor** on if it isn't already.
+2. Click **Add Donation**, fill it in, submit.
+3. Reload the page (`F5`, not just navigating away and back) — it must still be there with a real `batch_...` ID.
+4. Click **Cancel** on it → status flips to `cancelled`, the Cancel button disappears (can't cancel twice).
+
+If a donation disappears after reload: that's a browser/dev-server cache problem, not a code bug — fully stop `npm run dev` and restart it, then use a fresh private window. Don't assume something regressed without doing that first.
+
+### 12.2 My Requests — real create/cancel ✅ verified
+
+**Tab B → My Requests**
+
+1. Click **Create Request**, fill it in, submit.
+2. Reload the page — it must still be there with a real `req_...` ID.
+3. Click **Cancel** → status flips to `cancelled`.
+
+### 12.3 Report a Disaster (citizen) ✅ verified
+
+**Tab B → Report a Disaster**
+
+1. Fill: type, title, region, severity, one evidence note. Submit.
+2. Confirm the banner reads `status: pending validation` — never `active`. Nothing gets alerted yet.
+3. Try submitting again with no region **and** no zone filled in → must be refused with a clear error, not silently accepted.
+
+### 12.4 Verify / reject reports (coordinator) ✅ verified
+
+**Tab A → Disaster Emergency Command**
+
+1. Find the 12.3 report under **Pending Reports Awaiting Verification**.
+2. Click **Verify & Activate** → it moves down into **Active Emergency Declarations**.
+3. Back in Tab B, submit a near-duplicate (same type + region) → it should carry a **"Possible duplicate"** tag in the queue.
+4. Click **Reject** on it, type a reason (e.g. `duplicate`) when prompted → disappears from the queue; the original active one is untouched.
+
+### 12.5 Region filter
+
+**Tab A → Disaster Emergency Command**
+
+1. Use the region dropdown on **Active Emergency Declarations** (top-right of that panel).
+2. Switch North / Central / South / All Regions.
+3. Confirm the list reloads scoped to whichever region you pick — a disaster active in South must never appear while filtered to North.
+
+### 12.6 Cross-region assistance
+
+**Tab A → Network Request Management**
+
+1. Find **Cross-Region Assistance Check** near the top.
+2. Set region `south`, resource type `equipment`, quantity `50` → click **Check**.
+3. Read the result: local available / shortfall / other regions' surplus.
+4. Sanity check: if a region shows surplus, it should already be net of that region's own pending demand for the same resource type — it must never suggest handing over supply another region still needs itself.
+
+### 12.7 Movement restrictions
+
+**Tab A → Disruption & Recovery Center**
+
+1. Find **Zone Movement Restrictions** at the top.
+2. Click **Restrict** on South → turns red, "Movement Restricted".
+3. Verify/dispatch/assign a disaster whose zone is South (reuse 12.4's, or declare/verify a new one there).
+4. Confirm no volunteer gets auto-assigned into that zone — the task should sit `needs_attention` instead, even if the closest available volunteer happens to be in South.
+5. Click **Lift** on South afterward to restore normal matching, and confirm a fresh assignment there now succeeds.
+
+### 12.8 Volunteer location privacy
+
+1. Tab B (resident): open the Volunteers list. Confirm no volunteer's phone, email, or live GPS location is shown — only name, zone, skills, workload.
+2. Tab A (coordinator): same page. Confirm full contact info + live location **is** shown there.
+3. Directly via `http://localhost:8000/docs`: try `GET /api/volunteers` with no `Authorize` token set at all → must be `401`, not a public list.
+
+### Known pre-existing rough edges (not from this branch — don't chase these as new bugs)
+
+- `/community/requests`'s "Declare Emergency"-style demo cards and the **Ops → Disaster Emergency Command → Declare Emergency** form's `name`/`zone`/`disaster_type` fields don't match what the backend expects, so that specific form silently creates a generic "Flood detected" disaster regardless of what you type into it. Everything in 12.1–12.8 above is unaffected by this.
+
+---
+
 ## What "working correctly" looks like, in one paragraph
 
 Every account can request help immediately after signup (soft-gated behind an email OTP that doesn't block usage). Donor/Volunteer are self-service toggles; Coordinator only ever comes from an admin (direct grant or a pre-capability-flagged invitation link, itself only deliverable by an admin). The REST API enforces every one of those boundaries server-side regardless of what the frontend shows or hides — a 403 you get by poking the API directly with the wrong role is the system working, not a bug. The AI agent is a thin natural-language front end over the exact same guarded actions: it can narrate and orchestrate, but it has no tool for anything RED-tier (evacuation/medical/rescue/restricted-zone) and no way to approve its own AMBER decisions — try to talk it into either and confirm it refuses.
