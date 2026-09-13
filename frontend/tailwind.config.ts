@@ -1,8 +1,17 @@
 import type { Config } from "tailwindcss";
 
 const config: Config = {
+  darkMode: 'class',
   content: ["./app/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}"],
   theme: {
+    screens: {
+      xs: "375px",
+      sm: "640px",
+      md: "768px",
+      lg: "1024px",
+      xl: "1280px",
+      "2xl": "1536px",
+    },
     extend: {
       fontFamily: {
         sans: ["Inter", "system-ui", "-apple-system", "sans-serif"],
@@ -64,19 +73,6 @@ const config: Config = {
           soft: "#fee2e2",
           border: "#ef4444",
         },
-        ops: {
-          bg: "#0f172a",
-          card: "#1e293b",
-          border: "#334155",
-          accent: "#38bdf8",
-        },
-      },
-      boxShadow: {
-        subtle: "0 1px 3px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.1)",
-        card: "0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03)",
-        "card-hover": "0 10px 25px -5px rgba(0,0,0,0.08), 0 8px 10px -6px rgba(0,0,0,0.04)",
-        glow: "0 0 20px rgba(47, 111, 78, 0.25)",
-        "ops-glow": "0 0 20px rgba(56, 189, 248, 0.2)",
       },
       animation: {
         "pulse-slow": "pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite",

@@ -109,7 +109,21 @@ export interface CoordinationTask {
   volunteer_id?: string | null;
   disaster_id?: string | null;
   original_task_id?: string | null;
+  request_id?: string | null;
+  pickup_verified?: boolean;
+  delivery_verified?: boolean;
+  created_at?: string;
+  updated_at?: string;
   [key: string]: unknown;
+}
+
+export interface TaskVerification {
+  task_id: string;
+  pickup_verified: boolean;
+  delivery_verified: boolean;
+  status: string;
+  pickup_code: { otp_code: string; qr_payload: string; status: string } | null;
+  delivery_code: { otp_code: string; qr_payload: string; status: string } | null;
 }
 
 export interface VolunteerAlert {
@@ -231,6 +245,38 @@ export function generateNormalTask() {
 
 export function patchTaskStatus(taskId: string, status: string) {
   return apiPatch<CoordinationTask>(`/tasks/${taskId}/status`, { status });
+}
+
+/** Real task-progress actions - these are mutations that must surface
+ * real errors, so they use the strict `request<T>()` helper rather than
+ * the lenient apiGet/apiPost above. */
+export function acceptTask(taskId: string, volunteerId?: string): Promise<CoordinationTask> {
+  return request<CoordinationTask>(`/tasks/${taskId}/accept`, {
+    method: "POST",
+    body: JSON.stringify(volunteerId ? { volunteer_id: volunteerId } : {})
+  });
+}
+
+export function getTaskVerification(taskId: string): Promise<TaskVerification> {
+  return request<TaskVerification>(`/tasks/${taskId}/verification`);
+}
+
+export function reportCannotContinue(taskId: string, reason: string): Promise<{ success: boolean; message: string }> {
+  return request<{ success: boolean; message: string }>(`/tasks/${taskId}/cannot-continue`, {
+    method: "POST",
+    body: JSON.stringify({ reason })
+  });
+}
+
+/** The caller's own volunteer profile, if any - used to resolve the real
+ * volunteer_id instead of guessing from the user_id. Returns null (not a
+ * thrown error) on 404, since "not a volunteer yet" is an expected state. */
+export async function getMyVolunteer(): Promise<Volunteer | null> {
+  try {
+    return await request<Volunteer>("/volunteers/me");
+  } catch {
+    return null;
+  }
 }
 
 export function createDisaster(payload: Record<string, unknown>) {

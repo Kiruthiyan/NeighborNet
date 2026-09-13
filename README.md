@@ -38,8 +38,7 @@ Still P1/P2:
 - Durable repository wiring for inventory/requests and the remaining tables not yet covered by the new opt-in DynamoDB persistence (see above)
 - AgentCore Runtime packaging on port `8080` with `/ping` and `/invocations`
 - EventBridge, SNS/SES, AgentCore Memory, CloudWatch, S3 audit exports, and production auth
-- 100+ scenario evaluation suite
-- Additional dashboard surfaces beyond the unified page: dedicated Resources, Requests, Volunteers, Disruptions, Decisions, Activity/Audit, Evaluations, and Settings/Policies routes are not yet separate pages (their data currently only appears rolled up into the single dashboard page)
+- 100+ scenario evaluation suite (see `docs/EVALUATION_PLAN.md` for the methodology)
 
 Known setup caveats (resolved 2026-09-05):
 
@@ -56,7 +55,7 @@ Planning source of truth lives in `docs/`:
 - [Project Requirements](docs/PROJECT_REQUIREMENTS.md)
 - [System Design](docs/SYSTEM_DESIGN.md)
 - [Implementation Plan](docs/IMPLEMENTATION_PLAN.md)
-- [AWS Architecture](docs/AWS_ARCHITECTURE.md)
+- [AWS Architecture](docs/AWS_ARCHITECTURE.md) (includes a diagram of the current implemented architecture)
 - [Agent Architecture](docs/AGENT_ARCHITECTURE.md)
 - [Data Model](docs/DATA_MODEL.md)
 - [API Spec](docs/API_SPEC.md)
@@ -97,3 +96,26 @@ Preferred agent pattern is Strands agents-as-tools, with a NeighborNet Orchestra
 The MVP is one city district with 5-10 locations, about 150 food/resource units, about 45 requests, and about 18 volunteers. It handles prepared meals, fresh produce, pantry items, admin-created disaster events, volunteer alerts, accept/decline responses, task assignment, and recovery from volunteer/route/resource disruption.
 
 Out of scope: medical treatment assignment, evacuation orders, rescue operations requiring authorities, generic skill sharing, social networking, gamification, financial features, blockchain, ML training, and nationwide deployment.
+
+## Environment Variables
+
+Backend configuration is read from `backend/.env` (see `backend/.env.example` for the full list with placeholder values — never commit real credentials). Key groups:
+
+- **AWS / Bedrock**: `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `BEDROCK_MODEL_ID` — required for the real Strands/Bedrock agent path (`POST /api/agent/instruct`); the rest of the app and test suite run without them.
+- **Auth**: `API_SECRET_KEY` — signs JWTs; must be a real secret in any shared/deployed environment.
+- **Persistence**: `PERSIST_TO_DYNAMODB` (`true`/`false`, default `false`) plus DynamoDB table settings — optional write-through to AWS DynamoDB so multiple people share live state instead of each running their own in-memory copy.
+- **Notifications**: SMTP/SNS/SES settings — optional, used where volunteer/coordinator notifications are enabled.
+
+Frontend reads its API base URL from `NEXT_PUBLIC_API_URL` (`frontend/.env.local`, defaults to `http://localhost:8000/api`) — no AWS credentials are ever needed in the frontend.
+
+## Known Limitations
+
+- **State is in-memory per process** with optional DynamoDB write-through (`PERSIST_TO_DYNAMODB=true`). There is no distributed lock — running multiple backend workers/instances against the same DynamoDB tables can race on concurrent writes. Fine for a single-instance MVP/demo; not production-safe as-is.
+- **Route protection is enforced by the backend, not just the frontend.** `ops/`/`community/` layouts do real client-side auth/role redirects, but there is no edge `middleware.ts` — a client bypassing the UI entirely depends solely on backend per-endpoint RBAC (which is enforced consistently; see `docs/AUTH_PLAN.md`).
+- **AgentCore Runtime is not deployed.** The Strands agent runs as a normal FastAPI route (`POST /api/agent/instruct`) against Bedrock directly; the AgentCore packaging described under "Production Target" in `docs/AWS_ARCHITECTURE.md` is a planned next step, not implemented.
+- **No live hosted demo.** This is a local-first MVP; running it requires the local setup below.
+- `numpy`, `pandas`, `aioboto3`, and `strands-agents-tools` are declared dependencies not yet imported anywhere in `src/`.
+
+## License
+
+MIT — see [LICENSE](LICENSE).

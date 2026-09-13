@@ -113,58 +113,10 @@ function FormSection({ number, title, desc, icon: Icon, children }: {
   );
 }
 
-const INITIAL_DONATIONS = [
-  {
-    id: "DON-101",
-    resource_id: "DON-101",
-    item_name: "Bottled Drinking Water (500ml)",
-    resource_type: "WATER",
-    quantity: 100,
-    unit: "Bottles",
-    pickup_location: "Station Road Depot, Zone B, Rathmalana",
-    latitude: 6.8213,
-    longitude: 79.8862,
-    pickup_otp: "789201",
-    status: "AVAILABLE",
-    expiry_hours: 48,
-    notes: "Sealed cases, ground floor storage.",
-  },
-  {
-    id: "DON-102",
-    resource_id: "DON-102",
-    item_name: "Hot Meals (Rice & Curry Packs)",
-    resource_type: "FOOD",
-    quantity: 50,
-    unit: "Portions",
-    pickup_location: "24 Ferry Street, Moratuwa",
-    latitude: 6.773,
-    longitude: 79.8816,
-    pickup_otp: "789202",
-    status: "MATCHED",
-    expiry_hours: 6,
-    notes: "Freshly prepared. Requires immediate collection.",
-  },
-  {
-    id: "DON-103",
-    resource_id: "DON-103",
-    item_name: "First Aid & Sanitation Kits",
-    resource_type: "MEDICAL",
-    quantity: 25,
-    unit: "Kits",
-    pickup_location: "Dharmapala Road Community Hall, Dehiwala",
-    latitude: 6.8515,
-    longitude: 79.8659,
-    pickup_otp: "789203",
-    status: "AVAILABLE",
-    expiry_hours: 168,
-    notes: "Includes bandages, antiseptics, and hygiene items.",
-  }
-];
-
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function CommunityDonationsPage() {
   const { user } = useAuth();
-  const [resources, setResources]           = useState<any[]>(INITIAL_DONATIONS);
+  const [resources, setResources]           = useState<any[]>([]);
   const [loading, setLoading]               = useState(false);
   const [view, setView]                     = useState<"list" | "add">("list");
   const [submitting, setSubmitting]         = useState(false);
@@ -210,15 +162,16 @@ export default function CommunityDonationsPage() {
       if (!Array.isArray(data) || data.length === 0) {
         data = await apiGet<any[]>("/resources", []);
       }
-      if (Array.isArray(data) && data.length > 0 && user) {
+      if (Array.isArray(data) && user) {
         // This is "My Donations" - show this signer's own batches, not
         // whichever 3 happened to be first in the whole system's
         // inventory (which, with hundreds of seeded items, was almost
-        // never this user's own donation). Newest first.
+        // never this user's own donation). Newest first. A user with no
+        // donations yet sees the real empty state, not fabricated demo rows.
         const mine = data
           .filter((item) => item.donor_org_id === user.user_id)
           .reverse();
-        if (mine.length > 0) setResources(mine);
+        setResources(mine);
       }
     } catch { /* silent fallback */ }
   };
@@ -244,28 +197,7 @@ export default function CommunityDonationsPage() {
     if (!itemName.trim() || !pickupLoc.trim()) return;
     setSubmitting(true); setError(null);
 
-    const generatedId = `DON-${Math.floor(100 + Math.random() * 899)}`;
     const generatedOtp = String(Math.floor(700000 + Math.random() * 299999));
-
-    const newDonationObj = {
-      id: generatedId,
-      resource_id: generatedId,
-      item_name: itemName,
-      resource_type: category,
-      quantity: Number(quantity),
-      unit: unit || "Units",
-      pickup_location: pickupLoc,
-      latitude: locationResult?.lat || 6.8213,
-      longitude: locationResult?.lng || 79.8862,
-      pickup_otp: generatedOtp,
-      status: "AVAILABLE",
-      expiry_hours: expiryHours,
-      notes: notes,
-      created_at: new Date().toISOString(),
-    };
-
-    // Update local UI immediately so user sees immediate results
-    setResources((prev) => [newDonationObj, ...prev]);
 
     const payloadObj = {
       resource_type: category,
@@ -280,23 +212,25 @@ export default function CommunityDonationsPage() {
       notes,
     };
 
-    // Best-effort API persistence - capture the real created batch (with its
-    // real batch_id) and swap it in for the optimistic placeholder above, so
-    // Cancel (which needs the real batch_id) works on it immediately.
+    // Only show success once the donation is actually persisted - a failed
+    // POST must surface as a real error, not a phantom "success" record.
     try {
       const body = JSON.stringify(payloadObj);
       const created: any = await request("/inventory", { method: "POST", body }).catch(async () => {
         return await request("/resources", { method: "POST", body }).catch(() => null);
       });
       if (created && created.batch_id) {
-        setResources((prev) => prev.map((r) => (r.id === generatedId ? created : r)));
+        setResources((prev) => [created, ...prev]);
+        setSuccess(true);
+        setTimeout(() => { setView("list"); resetForm(); setSubmitting(false); }, 1000);
+      } else {
+        setError("Could not save your donation right now. Please try again.");
+        setSubmitting(false);
       }
     } catch {
-      /* Degrade gracefully if backend unavailable */
+      setError("Could not save your donation right now. Please try again.");
+      setSubmitting(false);
     }
-
-    setSuccess(true);
-    setTimeout(() => { setView("list"); resetForm(); setSubmitting(false); }, 1000);
   };
 
   const currentPickupLoc = locationResult?.address || location;
@@ -343,12 +277,12 @@ export default function CommunityDonationsPage() {
             </p>
             <QRCodeDisplay
               codeType="pickup"
-              otpCode={selectedDonationOTP.pickup_otp || "789201"}
-              qrPayload={selectedDonationOTP.qr_payload || JSON.stringify({ task_id: selectedDonationOTP.id || "task_001", type: "pickup", code: selectedDonationOTP.pickup_otp || "789201" })}
+              otpCode={selectedDonationOTP.pickup_otp || "Pending"}
+              qrPayload={selectedDonationOTP.qr_payload || (selectedDonationOTP.pickup_otp ? JSON.stringify({ task_id: selectedDonationOTP.id, type: "pickup", code: selectedDonationOTP.pickup_otp }) : "")}
               status={selectedDonationOTP.pickup_verified ? "verified" : "pending"}
             />
             <DonationTracker
-              donationId={selectedDonationOTP.id || selectedDonationOTP.resource_id || "DON-104"}
+              donationId={selectedDonationOTP.id || selectedDonationOTP.resource_id || "—"}
               itemName={selectedDonationOTP.item_name || selectedDonationOTP.resource_type || "Pantry Items"}
               quantity={selectedDonationOTP.quantity || 10}
               unit={selectedDonationOTP.unit || "Packs"}
@@ -383,7 +317,6 @@ export default function CommunityDonationsPage() {
               )}
               <Table columns={["ID", "Item", "Category", "Qty", "Pickup Location", "Pickup Verification", "Status", "Actions"]}>
                 {resources.map((item, idx) => {
-                  const sampleOtp = `${789200 + (idx + 1)}`;
                   const status = String(item.status || "AVAILABLE").toLowerCase();
                   // Only real backend records (they have a batch_id) can be
                   // cancelled through the real API - the bundled demo/mock
@@ -391,7 +324,7 @@ export default function CommunityDonationsPage() {
                   const canCancel = Boolean(item.batch_id) && !["cancelled", "consumed"].includes(status);
                   return (
                     <tr key={item.id || item.resource_id || item.batch_id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="px-4 py-3 font-mono font-bold text-xs text-slate-700">{item.batch_id || item.id || item.resource_id || "RES-001"}</td>
+                      <td className="px-4 py-3 font-mono font-bold text-xs text-slate-700">{item.batch_id || item.id || item.resource_id || "—"}</td>
                       <td className="px-4 py-3 font-semibold text-slate-900">{item.item_name || item.resource_type}</td>
                       <td className="px-4 py-3 text-slate-500 text-xs">{item.resource_type}</td>
                       <td className="px-4 py-3 text-slate-600 text-xs font-semibold">{item.quantity ?? item.quantity_available} {item.unit || "units"}</td>
@@ -400,10 +333,10 @@ export default function CommunityDonationsPage() {
                       </td>
                       <td className="px-4 py-3">
                         <button
-                          onClick={() => setSelectedDonationOTP({ ...item, pickup_otp: item.pickup_otp || sampleOtp })}
+                          onClick={() => setSelectedDonationOTP(item)}
                           className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-mono font-bold text-xs border border-emerald-200 transition-colors"
                         >
-                          <QrCodeIcon size={13} /> {item.pickup_otp || sampleOtp}
+                          <QrCodeIcon size={13} /> {item.pickup_otp || "Pending"}
                         </button>
                       </td>
                       <td className="px-4 py-3"><StatusBadge status={item.status || "AVAILABLE"} pulse={item.status === "MATCHED"} /></td>

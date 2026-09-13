@@ -29,14 +29,15 @@ export default function CommunityDashboardPage() {
           apiGet<any[]>("/resources", []),
           apiGet<any[]>("/tasks", []),
         ]);
-        setRequests(Array.isArray(reqs) ? reqs : []);
-        setDonations(Array.isArray(dests) ? dests : []);
-        setTasks(Array.isArray(tsk) ? tsk : []);
+        const myId = user?.user_id;
+        setRequests(Array.isArray(reqs) ? reqs.filter((r) => !myId || r.requesting_org_id === myId) : []);
+        setDonations(Array.isArray(dests) ? dests.filter((d) => !myId || d.donor_org_id === myId) : []);
+        setTasks(Array.isArray(tsk) ? tsk.filter((t) => !myId || t.assigned_volunteer_id === myId) : []);
       } catch { /* silent */ }
       finally { setLoading(false); }
     }
     loadData();
-  }, []);
+  }, [user]);
 
   const firstName = user?.name?.split(" ")[0] || "Neighbor";
   const hour = new Date().getHours();
@@ -76,8 +77,8 @@ export default function CommunityDashboardPage() {
     },
     {
       label: "Community Impact",
-      value: "Active",
-      sub: "local coordinator",
+      value: tasks.filter((t) => String(t.status || "").toLowerCase() === "completed").length,
+      sub: "tasks completed",
       icon: Zap,
       color: "text-violet-600",
       bg: "bg-violet-50",
@@ -156,25 +157,25 @@ export default function CommunityDashboardPage() {
       </div>
 
       {/* ── Stat cards ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 xs:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {stats.map((s) => {
           const Icon = s.icon;
           return (
             <Link
               key={s.label}
               href={s.href}
-              className="group flex flex-col justify-between rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200"
+              className="group flex flex-col justify-between rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200"
             >
               <div className="flex items-start justify-between">
-                <div className={`p-2.5 rounded-xl ${s.bg} ${s.border} border`}>
+                <div className={`p-2.5 rounded-xl ${s.bg} ${s.border} border shrink-0`}>
                   <Icon size={18} className={s.color} />
                 </div>
-                <ChevronRight size={14} className="text-slate-300 group-hover:text-slate-500 transition-colors mt-1" />
+                <ChevronRight size={14} className="text-slate-300 group-hover:text-slate-500 transition-colors mt-1 shrink-0" />
               </div>
-              <div className="mt-4">
-                <div className="text-3xl font-extrabold text-slate-900 tracking-tight leading-none">
+              <div className="mt-3">
+                <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight leading-none">
                   {loading ? (
-                    <span className="inline-block h-8 w-12 rounded-lg bg-slate-100 animate-pulse" />
+                    <span className="skeleton inline-block h-7 w-12 rounded-lg">&nbsp;</span>
                   ) : s.value}
                 </div>
                 <p className="mt-1.5 text-xs font-bold text-slate-700">{s.label}</p>

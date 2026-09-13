@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Flame, Plus, X, AlertTriangle, Users, CheckCircle2, ShieldAlert, Loader2, XCircle } from "lucide-react";
-import { Panel, StatusBadge, EmptyState, Badge } from "../../../components/ui";
+import { Panel, StatusBadge, EmptyState, Badge, Button, Input, Select } from "../../../components/ui";
 import {
   apiGet,
   request,
@@ -126,36 +126,33 @@ export default function OpsDisastersPage() {
   };
 
   return (
-    <div className="space-y-6 animate-fade-in text-slate-100 font-sans">
+    <div className="space-y-6 animate-fade-in text-slate-900 dark:text-slate-100 font-sans">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
             <Flame className="text-rose-500 animate-pulse" size={24} />
             Disaster Emergency Command
           </h1>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
             Declare emergencies, trigger automated volunteer pipeline alerts, and coordinate disaster response zones.
           </p>
         </div>
-        <button
-          onClick={() => setShowModal(true)}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white px-4 py-2.5 text-xs font-bold shadow-lg shadow-rose-600/20 transition-all"
-        >
+        <Button variant="danger" onClick={() => setShowModal(true)} className="shadow-lg shadow-rose-600/20">
           <Plus size={16} /> Declare Emergency
-        </button>
+        </Button>
       </div>
 
       <Panel dark title={`Pending Reports Awaiting Verification (${pending.length})`}>
         {reviewError && (
-          <div className="mb-4 flex items-center gap-2 rounded-xl bg-rose-950/60 border border-rose-500/40 p-3 text-xs text-rose-300">
+          <div className="mb-4 flex items-center gap-2 rounded-xl bg-rose-50 border border-rose-200 dark:bg-rose-950/60 dark:border-rose-500/40 p-3 text-xs text-rose-700 dark:text-rose-300">
             <AlertTriangle size={16} /> {reviewError}
           </div>
         )}
         {pendingLoading ? (
-          <div className="p-8 text-center text-xs text-slate-400">Loading pending reports...</div>
+          <div className="p-8 text-center text-xs text-slate-500 dark:text-slate-400">Loading pending reports...</div>
         ) : pending.length === 0 ? (
           <EmptyState icon={ShieldAlert}>
-            <p className="font-semibold text-slate-300">No pending citizen reports</p>
+            <p className="font-semibold text-slate-600 dark:text-slate-300">No pending citizen reports</p>
             <p className="text-xs text-slate-500 mt-1">
               Reports filed via "Report a Disaster" (see feature/disaster-reporting) appear here for review.
             </p>
@@ -165,20 +162,20 @@ export default function OpsDisastersPage() {
             {pending.map((report) => (
               <div
                 key={report.disaster_id}
-                className="p-4 rounded-xl border border-amber-500/30 bg-slate-900 shadow-md flex flex-col md:flex-row md:items-center md:justify-between gap-3"
+                className="p-4 rounded-xl border border-amber-300 dark:border-amber-500/30 bg-amber-50/40 dark:bg-slate-900 shadow-md flex flex-col md:flex-row md:items-center md:justify-between gap-3"
               >
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="text-sm font-bold text-white">{report.title}</h3>
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">{report.title}</h3>
                     <Badge tone="amber">{String(report.severity).toUpperCase()}</Badge>
                     {report.region && <Badge tone="blue">{String(report.region).toUpperCase()}</Badge>}
                     {report.is_duplicate && <Badge tone="red">Possible duplicate</Badge>}
                   </div>
-                  <p className="text-xs text-slate-400 mt-1">
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                     {report.type} • {report.description || "No description provided"}
                   </p>
                 </div>
-                <div className="flex items-center gap-2 border-t md:border-t-0 md:border-l border-slate-800 pt-3 md:pt-0 md:pl-4">
+                <div className="flex items-center gap-2 border-t md:border-t-0 md:border-l border-slate-200 dark:border-slate-800 pt-3 md:pt-0 md:pl-4">
                   <button
                     onClick={() => handleVerify(report.disaster_id)}
                     disabled={actingId === report.disaster_id}
@@ -190,7 +187,7 @@ export default function OpsDisastersPage() {
                   <button
                     onClick={() => handleReject(report.disaster_id)}
                     disabled={actingId === report.disaster_id}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-rose-300 border border-rose-500/30 px-3 py-1.5 text-xs font-bold"
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 disabled:opacity-50 text-rose-600 dark:text-rose-300 border border-rose-300 dark:border-rose-500/30 px-3 py-1.5 text-xs font-bold"
                   >
                     <XCircle size={13} />
                     Reject
@@ -206,23 +203,23 @@ export default function OpsDisastersPage() {
         dark
         title={`Active Emergency Declarations (${disasters.length})`}
         action={
-          <select
+          <Select
             value={regionFilter}
             onChange={(e) => handleRegionFilterChange(e.target.value)}
-            className="rounded-lg bg-slate-800 border border-slate-700 px-2.5 py-1.5 text-xs font-semibold text-slate-200 focus:border-rose-500 focus:outline-none"
+            className="!py-1.5 !text-xs font-semibold"
           >
             <option value="">All Regions</option>
             {REGIONS.map((r) => (
               <option key={r} value={r}>{r[0].toUpperCase() + r.slice(1)}</option>
             ))}
-          </select>
+          </Select>
         }
       >
         {loading ? (
-          <div className="p-8 text-center text-xs text-slate-400">Loading declarations...</div>
+          <div className="p-8 text-center text-xs text-slate-500 dark:text-slate-400">Loading declarations...</div>
         ) : disasters.length === 0 ? (
           <EmptyState icon={Flame}>
-            <p className="font-semibold text-slate-300">No active disaster declarations</p>
+            <p className="font-semibold text-slate-600 dark:text-slate-300">No active disaster declarations</p>
             <p className="text-xs text-slate-500 mt-1">
               System is operating in Everyday Normal Mode.
             </p>
@@ -232,27 +229,27 @@ export default function OpsDisastersPage() {
             {disasters.map((disaster) => (
               <div
                 key={disaster.id || disaster.disaster_id}
-                className="p-5 rounded-xl border border-rose-500/30 bg-slate-900 shadow-md flex flex-col md:flex-row md:items-center md:justify-between gap-4"
+                className="p-5 rounded-xl border border-rose-300 dark:border-rose-500/30 bg-rose-50/40 dark:bg-slate-900 shadow-md flex flex-col md:flex-row md:items-center md:justify-between gap-4"
               >
                 <div>
                   <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-bold text-white">{disaster.name || disaster.disaster_type}</h3>
-                    <span className="rounded bg-rose-500/20 text-rose-300 px-2 py-0.5 text-[10px] font-bold border border-rose-500/30">
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">{disaster.name || disaster.disaster_type}</h3>
+                    <span className="rounded bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-300 px-2 py-0.5 text-[10px] font-bold border border-rose-300 dark:border-rose-500/30">
                       {disaster.severity || "HIGH"} SEVERITY
                     </span>
                   </div>
-                  <p className="text-xs text-slate-400 mt-1">
-                    Zone: <strong className="text-slate-200">{disaster.zone || "Zone 1"}</strong> • Declared:{" "}
-                    <span className="text-slate-400">
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    Zone: <strong className="text-slate-700 dark:text-slate-200">{disaster.zone || "Zone 1"}</strong> • Declared:{" "}
+                    <span className="text-slate-500 dark:text-slate-400">
                       {disaster.created_at ? new Date(disaster.created_at).toLocaleString() : "Recently"}
                     </span>
                   </p>
                 </div>
 
-                <div className="flex items-center gap-4 border-t md:border-t-0 md:border-l border-slate-800 pt-3 md:pt-0 md:pl-6">
+                <div className="flex items-center gap-4 border-t md:border-t-0 md:border-l border-slate-200 dark:border-slate-800 pt-3 md:pt-0 md:pl-6">
                   <div>
                     <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Pipeline Responders</p>
-                    <p className="text-sm font-bold text-sky-400 flex items-center gap-1 mt-0.5">
+                    <p className="text-sm font-bold text-sky-600 dark:text-sky-400 flex items-center gap-1 mt-0.5">
                       <Users size={14} /> 12 Eligible Volunteers
                     </p>
                   </div>
@@ -266,23 +263,20 @@ export default function OpsDisastersPage() {
 
       {/* Declare Emergency Modal */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
-          <div className="w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-800 p-6 shadow-2xl animate-slide-up">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 dark:bg-slate-950/80 backdrop-blur-md p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 shadow-2xl animate-slide-up">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3 mb-4">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 <Flame className="text-rose-500" size={20} />
                 Declare Emergency Operation
               </h3>
-              <button
-                onClick={() => setShowModal(false)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800"
-              >
+              <Button variant="ghost" size="sm" onClick={() => setShowModal(false)} className="!p-1">
                 <X size={18} />
-              </button>
+              </Button>
             </div>
 
             {error && (
-              <div className="mb-4 flex items-center gap-2 rounded-xl bg-rose-950/60 border border-rose-500/40 p-3 text-xs text-rose-300">
+              <div className="mb-4 flex items-center gap-2 rounded-xl bg-rose-50 border border-rose-200 dark:bg-rose-950/60 dark:border-rose-500/40 p-3 text-xs text-rose-700 dark:text-rose-300">
                 <AlertTriangle size={16} />
                 {error}
               </div>
@@ -290,72 +284,64 @@ export default function OpsDisastersPage() {
 
             <form onSubmit={handleDeclareDisaster} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold uppercase text-slate-400 mb-1">Declaration Title</label>
-                <input
+                <label className="block text-xs font-bold uppercase text-slate-500 dark:text-slate-400 mb-1">Declaration Title</label>
+                <Input
                   type="text"
                   placeholder="e.g. Flash Flood Emergency - Lower District"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full rounded-xl bg-slate-800 border border-slate-700 px-3 py-2 text-xs text-white focus:border-rose-500 focus:outline-none"
+                  className="w-full"
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase text-slate-400 mb-1">Disaster Type</label>
-                <select
+                <label className="block text-xs font-bold uppercase text-slate-500 dark:text-slate-400 mb-1">Disaster Type</label>
+                <Select
                   value={disasterType}
                   onChange={(e) => setDisasterType(e.target.value)}
-                  className="w-full rounded-xl bg-slate-800 border border-slate-700 px-3 py-2 text-xs font-bold text-white focus:border-rose-500 focus:outline-none"
+                  className="w-full font-bold"
                 >
                   <option value="FLOOD">Flood / Heavy Rainfall</option>
                   <option value="EARTHQUAKE">Earthquake / Tremor</option>
                   <option value="STORM">Severe Storm / Tornado</option>
                   <option value="WILDFIRE">Wildfire / Smoke Hazard</option>
                   <option value="POWER_OUTAGE">Grid Outage / Infrastructure</option>
-                </select>
+                </Select>
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase text-slate-400 mb-1">Affected Zone</label>
-                <input
+                <label className="block text-xs font-bold uppercase text-slate-500 dark:text-slate-400 mb-1">Affected Zone</label>
+                <Input
                   type="text"
                   value={zone}
                   onChange={(e) => setZone(e.target.value)}
-                  className="w-full rounded-xl bg-slate-800 border border-slate-700 px-3 py-2 text-xs text-white focus:border-rose-500 focus:outline-none"
+                  className="w-full"
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase text-slate-400 mb-1">Severity Rating</label>
-                <select
+                <label className="block text-xs font-bold uppercase text-slate-500 dark:text-slate-400 mb-1">Severity Rating</label>
+                <Select
                   value={severity}
                   onChange={(e) => setSeverity(e.target.value)}
-                  className="w-full rounded-xl bg-slate-800 border border-slate-700 px-3 py-2 text-xs font-bold text-white focus:border-rose-500 focus:outline-none"
+                  className="w-full font-bold"
                 >
                   <option value="LOW">Low (Monitoring)</option>
                   <option value="MEDIUM">Medium (Local Volunteers Mobilized)</option>
                   <option value="HIGH">High (Full Area Emergency)</option>
                   <option value="CRITICAL">Critical (Life Safety Emergency)</option>
-                </select>
+                </Select>
               </div>
 
-              <div className="flex justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowModal(false)}
-                  className="rounded-xl border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-400 hover:bg-slate-800"
-                >
+              <div className="flex flex-wrap justify-end gap-3 pt-2">
+                <Button type="button" variant="secondary" onClick={() => setShowModal(false)}>
                   Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="rounded-xl bg-rose-600 hover:bg-rose-500 px-5 py-2 text-xs font-bold text-white shadow-lg shadow-rose-600/30 disabled:opacity-50"
-                >
+                </Button>
+                <Button type="submit" variant="danger" loading={submitting} className="shadow-lg shadow-rose-600/30">
                   {submitting ? "Declaring..." : "Declare Emergency"}
-                </button>
+                </Button>
               </div>
             </form>
           </div>

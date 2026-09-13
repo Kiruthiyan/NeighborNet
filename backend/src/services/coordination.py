@@ -1211,11 +1211,36 @@ class CoordinationService:
         self._record_event(f"Disaster tasks assigned: {len(tasks)}", "disaster")
         return tasks
 
+    _TERMINAL_TASK_STATUSES = {
+        TaskLifecycle.COMPLETED,
+        TaskLifecycle.CANCELLED,
+        TaskLifecycle.FAILED,
+        TaskLifecycle.SUPERSEDED,
+    }
+    _PRE_ASSIGNMENT_TASK_STATUSES = {TaskLifecycle.AVAILABLE, TaskLifecycle.ALERTED}
+
     def update_task_status(self, task_id: str, status: TaskLifecycle) -> CoordinationTask:
         """Update task status. Releases the assigned volunteer's capacity
-        once the task reaches a terminal state."""
+        once the task reaches a terminal state.
+
+        Guards against invalid transitions: a task already in a terminal
+        state can't be moved again (whether via the REST API or the AI
+        agent's update_task_status tool - see strands_tools.py), and a task
+        that was never assigned/started can't jump straight to
+        completed/in_progress."""
 
         task = self.get_task(task_id)
+        if task.status in self._TERMINAL_TASK_STATUSES and status != task.status:
+            raise InvalidStateTransitionError(
+                f"Task {task_id} is already '{task.status.value}' and cannot transition to '{status.value}'"
+            )
+        if (
+            task.status in self._PRE_ASSIGNMENT_TASK_STATUSES
+            and status in (TaskLifecycle.IN_PROGRESS, TaskLifecycle.COMPLETED)
+        ):
+            raise InvalidStateTransitionError(
+                f"Task {task_id} is '{task.status.value}' and must be assigned before it can become '{status.value}'"
+            )
         was_active = task.is_active
         task.status = status
         task.updated_at = datetime.now()
@@ -1419,14 +1444,36 @@ class CoordinationService:
         return self._find(self.state.decisions, "decision_id", decision_id)
 
     def _eligible_disaster_volunteers(self, disaster: DisasterEvent) -> List[Volunteer]:
-        """Filter nearby, verified, currently available volunteers."""
+        """Filter nearby, verified, currently available volunteers.
+
+        Region is a hard prerequisite (zone names are region names in this
+        system - see seed_data.zones/KNOWN_REGIONS), so a disaster in one
+        region can never alert volunteers whose zone info places them in a
+        different region. affected_zones (if set) narrows further within
+        the region; if unset, any in-region volunteer is eligible rather
+        than falling back to every volunteer system-wide.
+        """
 
         affected = set(disaster.affected_zones)
+        disaster_region = disaster.region
+
+        def in_region(volunteer: Volunteer) -> bool:
+            if not disaster_region:
+                return True
+            candidates = {
+                volunteer.last_known_zone,
+                volunteer.preferred_service_area,
+                *volunteer.preferred_zones,
+            }
+            candidates.discard(None)
+            return disaster_region in candidates
+
         return [
             volunteer
             for volunteer in self.state.volunteers
             if volunteer.verified
             and volunteer.is_available_for_assignment
+            and in_region(volunteer)
             and (
                 not affected
                 or volunteer.last_known_zone in affected

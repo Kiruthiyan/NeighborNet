@@ -68,9 +68,17 @@ async def update_task_status(
 
     try:
         status_value = TaskLifecycle(str(payload["status"]).lower())
-        return get_coordination_service().update_task_status(task_id, status_value)
     except KeyError as exc:
         raise HTTPException(status_code=400, detail="status is required") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not user.is_coordinator and status_value in (TaskLifecycle.IN_PROGRESS, TaskLifecycle.COMPLETED):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Use verify-pickup/verify-delivery to progress this task",
+        )
+    try:
+        return get_coordination_service().update_task_status(task_id, status_value)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -146,9 +154,24 @@ async def reassign_task_volunteer(task_id: str, payload: Dict[str, Any]):
 
 @router.post("/{task_id}/accept")
 async def atomic_accept_task(task_id: str, payload: Dict[str, Any], user: User = Depends(get_current_user)):
-    """Atomic task acceptance by a volunteer."""
+    """Atomic task acceptance by a volunteer. A volunteer may only accept on
+    their own behalf; only a coordinator may accept for another volunteer_id
+    (e.g. on-behalf-of assignment)."""
 
-    volunteer_id = payload.get("volunteer_id") or user.user_id
+    requested_volunteer_id = payload.get("volunteer_id")
+    own_volunteer = get_coordination_service().get_volunteer_by_user_id(user.user_id)
+    if requested_volunteer_id and not user.is_coordinator:
+        if own_volunteer is None or str(requested_volunteer_id) != own_volunteer.volunteer_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only accept tasks on your own behalf",
+            )
+    if requested_volunteer_id:
+        volunteer_id = requested_volunteer_id
+    elif own_volunteer is not None:
+        volunteer_id = own_volunteer.volunteer_id
+    else:
+        raise HTTPException(status_code=403, detail="No volunteer profile for this user")
     try:
         return get_coordination_service().atomic_accept_task(
             task_id=task_id,
@@ -159,13 +182,29 @@ async def atomic_accept_task(task_id: str, payload: Dict[str, Any], user: User =
 
 
 @router.post("/{task_id}/cannot-continue")
-async def cannot_continue_task(task_id: str, payload: Dict[str, Any], user: User = Depends(get_current_user)):
-    """Volunteer declares 'Cannot Continue' - triggers task recovery."""
+async def cannot_continue_task(
+    task_id: str, payload: Dict[str, Any], user: User = Depends(_require_task_owner_or_coordinator)
+):
+    """Volunteer declares 'Cannot Continue' - triggers task recovery. Only
+    the volunteer assigned to the task (or a coordinator) may do this -
+    the acting volunteer_id is always resolved server-side, never trusted
+    from the request body."""
 
-    volunteer_id = payload.get("volunteer_id") or user.user_id
+    service = get_coordination_service()
+    try:
+        task = service.get_task(task_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if user.is_coordinator:
+        volunteer_id = task.volunteer_id or user.user_id
+    else:
+        volunteer = service.get_volunteer_by_user_id(user.user_id)
+        if volunteer is None:
+            raise HTTPException(status_code=403, detail="No volunteer profile for this user")
+        volunteer_id = volunteer.volunteer_id
     reason = payload.get("reason") or "Volunteer declared cannot continue"
     try:
-        return get_coordination_service().cancel_and_recover_task(
+        return service.cancel_and_recover_task(
             task_id=task_id,
             volunteer_id=str(volunteer_id),
             reason=str(reason),
@@ -175,17 +214,33 @@ async def cannot_continue_task(task_id: str, payload: Dict[str, Any], user: User
 
 
 @router.post("/{task_id}/telemetry")
-async def report_telemetry(task_id: str, payload: Dict[str, Any], user: User = Depends(get_current_user)):
-    """Report live GPS telemetry and detect route deviations."""
+async def report_telemetry(
+    task_id: str, payload: Dict[str, Any], user: User = Depends(_require_task_owner_or_coordinator)
+):
+    """Report live GPS telemetry and detect route deviations. Only the
+    volunteer assigned to the task (or a coordinator) may report telemetry
+    for it - the acting volunteer_id is always resolved server-side."""
 
+    service = get_coordination_service()
+    try:
+        task = service.get_task(task_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if user.is_coordinator:
+        volunteer_id = task.volunteer_id or user.user_id
+    else:
+        volunteer = service.get_volunteer_by_user_id(user.user_id)
+        if volunteer is None:
+            raise HTTPException(status_code=403, detail="No volunteer profile for this user")
+        volunteer_id = volunteer.volunteer_id
     current_lat = float(payload.get("lat") or payload.get("latitude") or 0.0)
     current_lng = float(payload.get("lng") or payload.get("longitude") or 0.0)
     try:
-        return get_coordination_service().report_route_telemetry(
+        return service.report_route_telemetry(
             task_id=task_id,
             current_lat=current_lat,
             current_lng=current_lng,
-            volunteer_id=user.user_id,
+            volunteer_id=str(volunteer_id),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

@@ -1,9 +1,18 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Mail, Plus, X, AlertCircle, ShieldCheck, Check, Trash2 } from "lucide-react";
-import { Panel, StatusBadge, EmptyState } from "../../../../components/ui";
-import { listInvitations, createInvitation, revokeInvitation, Invitation } from "../../../../lib/api";
+import { useState, useEffect, useCallback } from "react";
+import {
+  Mail, Plus, X, AlertCircle, RefreshCw
+} from "lucide-react";
+import {
+  Panel, StatusBadge, EmptyState, ConfirmModal, CopyButton, Spinner,
+  Table, SkeletonRow, Badge, Button, Input
+} from "../../../../components/ui";
+import {
+  listInvitations, createInvitation, revokeInvitation, Invitation
+} from "../../../../lib/api";
+
+const TABLE_COLUMNS = ["Invite ID", "Target Email", "Capabilities", "Delivery", "Status", "Actions"];
 
 export default function OpsAdminInvitationsPage() {
   const [invitations, setInvitations] = useState<Invitation[]>([]);
@@ -11,44 +20,53 @@ export default function OpsAdminInvitationsPage() {
   const [showModal, setShowModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [revokeTarget, setRevokeTarget] = useState<Invitation | null>(null);
+  const [revokeLoading, setRevokeLoading] = useState(false);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  // Form State
+  // Form state
   const [email, setEmail] = useState("");
   const [grantCoordinator, setGrantCoordinator] = useState(true);
   const [grantDonor, setGrantDonor] = useState(false);
   const [grantVolunteer, setGrantVolunteer] = useState(true);
 
-  const loadInviteList = async () => {
+  const showSuccess = (msg: string) => {
+    setSuccessMsg(msg);
+    setTimeout(() => setSuccessMsg(null), 3000);
+  };
+
+  const loadInviteList = useCallback(async () => {
     setLoading(true);
     try {
       const data = await listInvitations();
       setInvitations(Array.isArray(data) ? data : []);
-    } catch (err) {
-      console.error("Failed to load invitations", err);
+    } catch {
+      // silently degrade
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    loadInviteList();
   }, []);
+
+  useEffect(() => { loadInviteList(); }, [loadInviteList]);
 
   const handleCreateInvite = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
     setError(null);
-
     try {
       await createInvitation({
         email,
         grant_coordinator: grantCoordinator,
         grant_donor: grantDonor,
-        grant_volunteer: grantVolunteer,
+        grant_volunteer: grantVolunteer
       });
       setShowModal(false);
       setEmail("");
+      setGrantCoordinator(true);
+      setGrantDonor(false);
+      setGrantVolunteer(true);
       await loadInviteList();
+      showSuccess(`Invitation sent to ${email}`);
     } catch (err: any) {
       setError(err?.message || "Failed to create invitation");
     } finally {
@@ -56,197 +74,287 @@ export default function OpsAdminInvitationsPage() {
     }
   };
 
-  const handleRevoke = async (inviteId: string) => {
-    if (!confirm("Are you sure you want to revoke this invitation?")) return;
+  const handleRevoke = async () => {
+    if (!revokeTarget) return;
+    setRevokeLoading(true);
     try {
-      await revokeInvitation(inviteId);
+      await revokeInvitation(revokeTarget.invite_id);
       await loadInviteList();
-    } catch (err) {
-      console.error("Failed to revoke invitation", err);
+      showSuccess("Invitation revoked");
+    } catch {
+      // handled by ConfirmModal staying open
+    } finally {
+      setRevokeLoading(false);
+      setRevokeTarget(null);
     }
   };
 
+  const getSignupUrl = (inv: Invitation) => {
+    const base = typeof window !== "undefined" ? window.location.origin : "";
+    return `${base}${inv.signup_url_path}`;
+  };
+
+  const RoleChip = ({ label, tone }: { label: string; tone: "blue" | "green" | "purple" }) => (
+    <Badge tone={tone}>{label}</Badge>
+  );
+
   return (
-    <div className="space-y-6 animate-fade-in text-slate-100 font-sans">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div className="space-y-6 animate-fade-in text-slate-900 dark:text-slate-100 font-sans">
+      {/* Page header */}
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs font-mono font-bold uppercase tracking-wider text-purple-400">
+            <span className="text-xs font-mono font-bold uppercase tracking-wider text-sky-600 dark:text-sky-400">
               System Administration
             </span>
-            <span className="h-1.5 w-1.5 rounded-full bg-purple-400" />
+            <span className="h-1.5 w-1.5 rounded-full bg-sky-500 dark:bg-sky-400" />
           </div>
-          <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2">
-            <Mail className="text-purple-400" size={24} />
-            Coordinator & Partner Invitations
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+            <Mail className="text-sky-600 dark:text-sky-400 shrink-0" size={24} />
+            Coordinator &amp; Partner Invitations
           </h1>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-xl">
             Issue sign-up invitations with pre-configured coordinator, donor, or volunteer capabilities.
+            Recipients can sign up without an admin action.
           </p>
         </div>
-        <button
-          onClick={() => setShowModal(true)}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white px-4 py-2.5 text-xs font-bold shadow-lg shadow-purple-600/20 transition-all"
-        >
-          <Plus size={16} /> Create Invitation
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            variant="secondary"
+            size="md"
+            onClick={loadInviteList}
+            disabled={loading}
+            title="Refresh"
+            className="!px-2.5 !py-2.5"
+          >
+            {loading ? <Spinner size="sm" color="slate" /> : <RefreshCw size={16} />}
+          </Button>
+          <Button variant="primary" size="md" onClick={() => setShowModal(true)}>
+            <Plus size={16} /> Create Invitation
+          </Button>
+        </div>
       </div>
 
-      <Panel dark title={`Issued Invitations (${invitations.length})`}>
+      {/* Success message */}
+      {successMsg && (
+        <div className="flex items-center gap-2 rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm text-emerald-700 dark:bg-emerald-950/60 dark:border-emerald-500/40 dark:text-emerald-300 animate-fade-in">
+          <span className="h-2 w-2 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-pulse shrink-0" />
+          {successMsg}
+        </div>
+      )}
+
+      {/* Invitations table */}
+      <Panel title={`Issued Invitations (${invitations.length})`}>
         {loading ? (
-          <div className="p-8 text-center text-xs text-slate-400">Loading invitations...</div>
+          <Table columns={TABLE_COLUMNS}>
+            {[...Array(4)].map((_, i) => <SkeletonRow key={i} columns={TABLE_COLUMNS.length} />)}
+          </Table>
         ) : invitations.length === 0 ? (
           <EmptyState icon={Mail}>
-            <p className="font-semibold text-slate-300">No invitations issued yet</p>
+            <p className="font-semibold text-slate-700 dark:text-slate-300">No invitations issued yet</p>
+            <p className="text-xs text-slate-500 dark:text-slate-500 mt-1">Create an invitation to onboard coordinators with pre-configured roles</p>
+            <Button variant="primary" size="sm" className="mt-3" onClick={() => setShowModal(true)}>
+              <Plus size={13} /> Create First Invitation
+            </Button>
           </EmptyState>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs text-slate-300">
-              <thead className="bg-slate-800/80 text-[11px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-700">
-                <tr>
-                  <th className="px-4 py-3">Invite ID</th>
-                  <th className="px-4 py-3">Target Email</th>
-                  <th className="px-4 py-3">Pre-granted Capabilities</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800">
-                {invitations.map((inv) => (
-                  <tr key={inv.invite_id} className="hover:bg-slate-800/40 transition-colors">
-                    <td className="px-4 py-3 font-mono font-bold text-purple-400">{inv.invite_id}</td>
-                    <td className="px-4 py-3 font-semibold text-white">{inv.email}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-1">
-                        {inv.granted_capabilities?.is_coordinator && (
-                          <span className="rounded bg-purple-950 text-purple-300 border border-purple-800 px-1.5 py-0.5 text-[10px] font-bold">
-                            Coordinator
-                          </span>
-                        )}
-                        {inv.granted_capabilities?.is_donor && (
-                          <span className="rounded bg-emerald-950 text-emerald-300 border border-emerald-800 px-1.5 py-0.5 text-[10px] font-bold">
-                            Donor
-                          </span>
-                        )}
-                        {inv.granted_capabilities?.is_volunteer && (
-                          <span className="rounded bg-sky-950 text-sky-300 border border-sky-800 px-1.5 py-0.5 text-[10px] font-bold">
-                            Volunteer
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <StatusBadge status={inv.status || "PENDING"} />
-                    </td>
-                    <td className="px-4 py-3">
-                      {inv.status === "PENDING" && (
-                        <button
-                          onClick={() => handleRevoke(inv.invite_id)}
-                          className="text-rose-400 hover:text-rose-300 font-semibold text-xs hover:underline"
-                        >
-                          Revoke
-                        </button>
+          <Table columns={TABLE_COLUMNS}>
+            {invitations.map((inv) => (
+              <tr key={inv.invite_id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+                {/* Invite ID — truncated + copyable */}
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-mono text-[11px] text-sky-600 dark:text-sky-300">
+                      {inv.invite_id.slice(0, 8)}…
+                    </span>
+                    <CopyButton text={inv.invite_id} />
+                  </div>
+                </td>
+
+                {/* Email */}
+                <td className="px-4 py-3 max-w-[180px]">
+                  <span className="truncate block font-semibold text-slate-900 dark:text-white" title={inv.email}>
+                    {inv.email}
+                  </span>
+                </td>
+
+                {/* Capabilities */}
+                <td className="px-4 py-3">
+                  <div className="flex flex-wrap gap-1">
+                    {inv.granted_capabilities?.is_coordinator && (
+                      <RoleChip label="Coordinator" tone="blue" />
+                    )}
+                    {inv.granted_capabilities?.is_donor && (
+                      <RoleChip label="Donor" tone="green" />
+                    )}
+                    {inv.granted_capabilities?.is_volunteer && (
+                      <RoleChip label="Volunteer" tone="purple" />
+                    )}
+                    {!inv.granted_capabilities?.is_coordinator &&
+                      !inv.granted_capabilities?.is_donor &&
+                      !inv.granted_capabilities?.is_volunteer && (
+                        <span className="text-[11px] text-slate-500 dark:text-slate-500 italic">None</span>
                       )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                  </div>
+                </td>
+
+                {/* Delivery (email_sent) */}
+                <td className="px-4 py-3">
+                  <StatusBadge status={inv.email_sent ? "Emailed" : "Link only"} />
+                </td>
+
+                {/* Status */}
+                <td className="px-4 py-3">
+                  <StatusBadge status={inv.status || "Pending"} />
+                </td>
+
+                {/* Actions */}
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <CopyButton text={getSignupUrl(inv)} label="Copy link" />
+                    {inv.status === "PENDING" && (
+                      <button
+                        onClick={() => setRevokeTarget(inv)}
+                        className="text-rose-600 hover:text-rose-500 dark:text-rose-400 dark:hover:text-rose-300 font-semibold text-[11px] px-2 py-1 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+                      >
+                        Revoke
+                      </button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </Table>
         )}
       </Panel>
 
-      {/* Create Invite Modal */}
+      {/* Create Invite Modal — styled to match ConfirmModal's card treatment */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4">
-          <div className="w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-800 p-6 shadow-2xl animate-slide-up">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <Mail className="text-purple-400" size={20} />
-                Send Invitation & Grant Roles
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="invite-modal-title"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowModal(false); }}
+        >
+          <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 border border-transparent dark:border-slate-700 shadow-2xl animate-slide-up">
+            {/* Modal header */}
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 px-6 py-4">
+              <h3 id="invite-modal-title" className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <Mail className="text-sky-600 dark:text-sky-400" size={20} />
+                Create &amp; Send Invitation
               </h3>
               <button
                 onClick={() => setShowModal(false)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800"
+                aria-label="Close modal"
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-white p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
               >
                 <X size={18} />
               </button>
             </div>
 
-            {error && (
-              <div className="mb-4 flex items-center gap-2 rounded-xl bg-rose-950/60 border border-rose-500/40 p-3 text-xs text-rose-300">
-                <AlertCircle size={16} />
-                {error}
-              </div>
-            )}
+            <div className="px-6 py-5">
+              {error && (
+                <div className="mb-4 flex items-center gap-2 rounded-xl bg-rose-50 border border-rose-200 dark:bg-rose-950/60 dark:border-rose-500/40 p-3 text-sm text-rose-700 dark:text-rose-300">
+                  <AlertCircle size={16} className="shrink-0" />
+                  {error}
+                </div>
+              )}
 
-            <form onSubmit={handleCreateInvite} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold uppercase text-slate-400 mb-1">Invitee Email Address</label>
-                <input
-                  type="email"
-                  placeholder="coordinator@partner-org.org"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full rounded-xl bg-slate-800 border border-slate-700 px-3 py-2 text-xs text-white focus:border-purple-500 focus:outline-none"
-                  required
-                />
-              </div>
-
-              <div className="space-y-2 pt-2">
-                <label className="block text-xs font-bold uppercase text-slate-400">Pre-grant Roles on Sign-up:</label>
-
-                <label className="flex items-center gap-2 text-xs text-slate-200 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={grantCoordinator}
-                    onChange={(e) => setGrantCoordinator(e.target.checked)}
-                    className="h-4 w-4 rounded border-slate-700 bg-slate-800 text-purple-600 focus:ring-purple-500"
+              <form onSubmit={handleCreateInvite} className="space-y-5">
+                {/* Email */}
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">
+                    Invitee Email Address *
+                  </label>
+                  <Input
+                    type="email"
+                    placeholder="coordinator@partner-org.org"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full"
+                    required
+                    autoComplete="email"
                   />
-                  <span>Grant Coordinator Operations Access</span>
-                </label>
+                </div>
 
-                <label className="flex items-center gap-2 text-xs text-slate-200 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={grantVolunteer}
-                    onChange={(e) => setGrantVolunteer(e.target.checked)}
-                    className="h-4 w-4 rounded border-slate-700 bg-slate-800 text-sky-600 focus:ring-sky-500"
-                  />
-                  <span>Grant Volunteer Access</span>
-                </label>
+                {/* Role checkboxes */}
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-2">
+                    Pre-grant Roles on Sign-up
+                  </label>
+                  <div className="space-y-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-4">
+                    {[
+                      {
+                        key: "coordinator",
+                        label: "Coordinator — Operations portal access",
+                        checked: grantCoordinator,
+                        onChange: setGrantCoordinator,
+                        color: "text-sky-700 dark:text-sky-300",
+                        ring: "focus:ring-sky-500"
+                      },
+                      {
+                        key: "volunteer",
+                        label: "Volunteer — Task acceptance &amp; dispatch",
+                        checked: grantVolunteer,
+                        onChange: setGrantVolunteer,
+                        color: "text-indigo-700 dark:text-indigo-300",
+                        ring: "focus:ring-indigo-500"
+                      },
+                      {
+                        key: "donor",
+                        label: "Donor — Resource donation listing",
+                        checked: grantDonor,
+                        onChange: setGrantDonor,
+                        color: "text-emerald-700 dark:text-emerald-300",
+                        ring: "focus:ring-emerald-500"
+                      }
+                    ].map((item) => (
+                      <label key={item.key} className="flex items-start gap-3 cursor-pointer group">
+                        <input
+                          type="checkbox"
+                          checked={item.checked}
+                          onChange={(e) => item.onChange(e.target.checked)}
+                          className={`mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 ${item.ring}`}
+                        />
+                        <span className={`text-sm ${item.color} group-hover:brightness-110 transition-all`}
+                          dangerouslySetInnerHTML={{ __html: item.label }}
+                        />
+                      </label>
+                    ))}
+                  </div>
+                </div>
 
-                <label className="flex items-center gap-2 text-xs text-slate-200 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={grantDonor}
-                    onChange={(e) => setGrantDonor(e.target.checked)}
-                    className="h-4 w-4 rounded border-slate-700 bg-slate-800 text-emerald-600 focus:ring-emerald-500"
-                  />
-                  <span>Grant Donor Access</span>
-                </label>
-              </div>
-
-              <div className="flex justify-end gap-3 pt-4">
-                <button
-                  type="button"
-                  onClick={() => setShowModal(false)}
-                  className="rounded-xl border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-400 hover:bg-slate-800"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="rounded-xl bg-purple-600 hover:bg-purple-500 px-5 py-2 text-xs font-bold text-white shadow-lg shadow-purple-600/30 disabled:opacity-50"
-                >
-                  {submitting ? "Sending..." : "Create & Send Invitation"}
-                </button>
-              </div>
-            </form>
+                {/* Footer */}
+                <div className="flex justify-end gap-3 pt-1">
+                  <Button type="button" variant="secondary" onClick={() => setShowModal(false)}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" variant="primary" loading={submitting} disabled={submitting || !email}>
+                    {submitting ? "Sending…" : "Create & Send Invitation"}
+                  </Button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       )}
+
+      {/* Revoke confirmation modal */}
+      <ConfirmModal
+        open={!!revokeTarget}
+        onClose={() => setRevokeTarget(null)}
+        onConfirm={handleRevoke}
+        title="Revoke Invitation"
+        loading={revokeLoading}
+        confirmLabel="Revoke"
+        confirmClass="bg-rose-600 hover:bg-rose-500 text-white"
+        message={
+          revokeTarget
+            ? <span>Revoke the invitation sent to <strong>{revokeTarget.email}</strong>? The signup link will stop working.</span>
+            : ""
+        }
+      />
     </div>
   );
 }

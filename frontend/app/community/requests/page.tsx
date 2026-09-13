@@ -32,11 +32,16 @@ import {
   Sparkles,
   Tent
 } from "lucide-react";
-import { StatusBadge } from "../../../components/ui";
+import { StatusBadge, Timeline, TimelineStep } from "../../../components/ui";
 import { useAuth } from "../../../lib/auth";
 import LocationPicker, { LocationResult } from "../../../components/LocationPicker";
-import { QRCodeDisplay } from "../../../components/QRCodeDisplay";
-import { apiGet, request as apiRequest, cancelRequest as apiCancelRequest } from "../../../lib/api";
+import {
+  apiGet,
+  request as apiRequest,
+  cancelRequest as apiCancelRequest,
+  getTasks,
+  CoordinationTask
+} from "../../../lib/api";
 
 // Types
 export type RequestMode = "NORMAL" | "DISASTER";
@@ -88,175 +93,6 @@ export interface RequestItem {
   }[];
 }
 
-// Initial Mock Requests to immediately showcase all features & the prompt's REQ-1042 example
-const INITIAL_REQUESTS: RequestItem[] = [
-  {
-    id: "req-1042",
-    request_id: "REQ-1042",
-    mode: "DISASTER",
-    disaster_name: "Flood – Zone B",
-    disaster_id: "disaster_1",
-    type: "Drinking Water",
-    resource_name: "Drinking Water",
-    quantity: 100,
-    unit: "Bottles",
-    affected_location: "Rathmalana, Zone B",
-    address_or_landmark: "Station Road, Near Community Relief Shelter #3",
-    zone: "Zone B",
-    latitude: 6.8213,
-    longitude: 79.8862,
-    is_in_disaster_zone: true,
-    reason: "Flooding has contaminated local water mains and community kitchen is flooded.",
-    people_affected: 45,
-    urgency: "CRITICAL",
-    needed_by_date: "Today",
-    needed_by_time: "6:00 PM",
-    status: "PENDING",
-    risk_classification: "GREEN",
-    created_at: "2026-09-09T14:30:00Z",
-    matched_resource: "100 bottles drinking water",
-    matched_donor: "Community Food Bank",
-    assigned_volunteer: "Awaiting assignment",
-    notifications: [
-      {
-        id: "n-1",
-        title: "Request Created & Verified",
-        message: "Deterministic checks passed. Service area verified within Zone B.",
-        timestamp: "2:30 PM",
-        type: "success"
-      },
-      {
-        id: "n-2",
-        title: "Deterministic Safety Classification",
-        message: "RiskClassifier assigned status GREEN. Automated matching pipeline activated.",
-        timestamp: "2:31 PM",
-        type: "info"
-      },
-      {
-        id: "n-3",
-        title: "PlanningEngine Matching Active",
-        message: "Matching against 100 bottles Drinking Water from Community Food Bank.",
-        timestamp: "2:35 PM",
-        type: "info"
-      }
-    ]
-  },
-  {
-    id: "req-1038",
-    request_id: "REQ-1038",
-    mode: "NORMAL",
-    type: "Food",
-    resource_name: "Hot Cooked Meals",
-    quantity: 35,
-    unit: "Packs",
-    affected_location: "Moratuwa, Zone B",
-    address_or_landmark: "24 Ferry Street, Golden Age Elder Care",
-    zone: "Zone B",
-    latitude: 6.773,
-    longitude: 79.8816,
-    is_in_disaster_zone: false,
-    reason: "Kitchen renovation in progress; midday meals requested for elderly residents.",
-    people_affected: 35,
-    urgency: "MEDIUM",
-    needed_by_date: "Tomorrow",
-    needed_by_time: "12:00 PM",
-    status: "IN_PROGRESS",
-    risk_classification: "GREEN",
-    created_at: "2026-09-08T09:15:00Z",
-    matched_resource: "35 Fresh Nutritional Lunch Packs",
-    matched_donor: "St. Peter's Community Kitchen",
-    assigned_volunteer: "Kasun Silva (Volunteer #V-204)",
-    notifications: [
-      {
-        id: "n-10",
-        title: "Volunteer Assigned",
-        message: "Kasun Silva accepted task assignment. Pickup scheduled from St. Peter's Kitchen.",
-        timestamp: "Yesterday, 3:00 PM",
-        type: "success"
-      },
-      {
-        id: "n-11",
-        title: "Task In Progress",
-        message: "Volunteer en route for meal pickup.",
-        timestamp: "Today, 10:45 AM",
-        type: "info"
-      }
-    ]
-  },
-  {
-    id: "req-1029",
-    request_id: "REQ-1029",
-    mode: "DISASTER",
-    disaster_name: "Flood – Zone B",
-    disaster_id: "disaster_1",
-    type: "Essential Supplies",
-    resource_name: "Hygiene & Sanitation Kits",
-    quantity: 20,
-    unit: "Kits",
-    affected_location: "Dehiwala, Zone A",
-    address_or_landmark: "Dharmapala Road Community Center",
-    zone: "Zone A",
-    latitude: 6.8515,
-    longitude: 79.8659,
-    is_in_disaster_zone: true,
-    reason: "Families evacuated from low-lying riverbank homes without basic toiletries.",
-    people_affected: 20,
-    urgency: "HIGH",
-    needed_by_date: "Today",
-    needed_by_time: "8:00 PM",
-    status: "ASSIGNED",
-    risk_classification: "GREEN",
-    created_at: "2026-09-09T08:20:00Z",
-    matched_resource: "20 Disaster Relief Hygiene Packs",
-    matched_donor: "Red Cross Chapter",
-    assigned_volunteer: "Niroja Kumar (Driver with Cargo Van)",
-    notifications: [
-      {
-        id: "n-20",
-        title: "Volunteer Assigned",
-        message: "Niroja Kumar has taken charge of this distribution batch.",
-        timestamp: "11:15 AM",
-        type: "success"
-      }
-    ]
-  },
-  {
-    id: "req-1015",
-    request_id: "REQ-1015",
-    mode: "NORMAL",
-    type: "Food",
-    resource_name: "Dry Rations & Baby Formula",
-    quantity: 12,
-    unit: "Boxes",
-    affected_location: "Wellawatte, Zone A",
-    address_or_landmark: "Manning Place, Near Beach Road",
-    zone: "Zone A",
-    latitude: 6.8781,
-    longitude: 79.8611,
-    is_in_disaster_zone: false,
-    reason: "Neighborhood single parent cooperative dry food assistance.",
-    people_affected: 18,
-    urgency: "LOW",
-    needed_by_date: "Sep 12, 2026",
-    needed_by_time: "5:00 PM",
-    status: "COMPLETED",
-    risk_classification: "GREEN",
-    created_at: "2026-09-06T11:00:00Z",
-    matched_resource: "12 Dry Provisions Care Baskets",
-    matched_donor: "Mercy Food Drive",
-    assigned_volunteer: "Dilshan Fernando",
-    notifications: [
-      {
-        id: "n-30",
-        title: "Delivery Completed Successfully",
-        message: "All 12 care baskets delivered and verified by recipient cooperative.",
-        timestamp: "Sep 7, 4:20 PM",
-        type: "success"
-      }
-    ]
-  }
-];
-
 // ─── Real backend <-> this page's richer display shape ────────────────────
 // The backend's Request model (src/models/requests.py) is much leaner than
 // RequestItem above (no notifications/matched_donor/assigned_volunteer -
@@ -303,6 +139,31 @@ function backendRequestToItem(r: any): RequestItem {
     matched_resource: r.quantity_fulfilled > 0 ? `${r.quantity_fulfilled} of ${r.quantity_requested} fulfilled` : undefined,
     notifications: [],
   };
+}
+
+// Real Lifecycle Timeline steps for the requester-side tracking modal.
+// Driven by the linked CoordinationTask when one exists (volunteer
+// assigned/pickup/in-progress/delivered/completed are all real backend
+// fields); falls back to the request's own coarser status only when no
+// task has been created for it yet.
+function buildRequesterTimeline(req: RequestItem, task: CoordinationTask | null): TimelineStep[] {
+  if (task) {
+    return [
+      { label: "Assigned", done: !!task.volunteer_id },
+      { label: "Pickup Verified", done: !!task.pickup_verified },
+      { label: "In Progress", done: task.status === "in_progress" || task.status === "completed" },
+      { label: "Delivered", done: !!task.delivery_verified },
+      { label: "Completed", done: task.status === "completed" }
+    ];
+  }
+  return [
+    { label: "Created", done: true },
+    { label: "Matched", done: req.status !== "PENDING" },
+    { label: "Assigned", done: false },
+    { label: "Pickup Verified", done: false },
+    { label: "In Progress", done: false },
+    { label: "Delivered", done: false }
+  ];
 }
 
 // Active Disasters for Disaster Mode
@@ -444,9 +305,9 @@ export default function CommunityRequestsPage() {
       const mine = Array.isArray(data)
         ? data.filter((r) => r.requesting_org_id === user.user_id).map(backendRequestToItem).reverse()
         : [];
-      setRequestsList(mine.length > 0 ? mine : INITIAL_REQUESTS);
+      setRequestsList(mine);
     } catch {
-      setRequestsList(INITIAL_REQUESTS);
+      setRequestsList([]);
     } finally {
       setRequestsLoaded(true);
     }
@@ -469,6 +330,46 @@ export default function CommunityRequestsPage() {
   const [editingRequest, setEditingRequest] = useState<RequestItem | null>(null);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [latestCreatedId, setLatestCreatedId] = useState<string>("");
+
+  // Real task/volunteer linked to the request open in the Lifecycle
+  // Timeline modal - fetched from the backend and polled while the modal
+  // is open and the task is still active, never fabricated client-side.
+  const [linkedTask, setLinkedTask] = useState<CoordinationTask | null>(null);
+  const [linkedVolunteerName, setLinkedVolunteerName] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!selectedDetailRequest) {
+      setLinkedTask(null);
+      setLinkedVolunteerName(null);
+      return;
+    }
+    let cancelled = false;
+
+    const refresh = async () => {
+      const [tasks, volunteers] = await Promise.all([
+        getTasks(),
+        apiGet<any[]>("/volunteers", [])
+      ]);
+      if (cancelled) return;
+      const task = tasks.find((t) => t.request_id === selectedDetailRequest.request_id) || null;
+      setLinkedTask(task);
+      if (task?.volunteer_id) {
+        const volunteer = volunteers.find((v) => v.volunteer_id === task.volunteer_id);
+        setLinkedVolunteerName(volunteer?.name || null);
+      } else {
+        setLinkedVolunteerName(null);
+      }
+    };
+
+    refresh();
+    const interval = setInterval(refresh, 5000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDetailRequest?.request_id]);
 
   // ==========================================
   // Streamlined Form State (Only Needed Fields)
@@ -859,7 +760,7 @@ export default function CommunityRequestsPage() {
       <div className="rounded-3xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-sm space-y-4">
         <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4">
           {/* Search Box */}
-          <div className="relative flex-1 min-w-[260px]">
+          <div className="relative flex-1 min-w-0 sm:min-w-[260px]">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
             <input
               type="text"
@@ -1571,9 +1472,11 @@ export default function CommunityRequestsPage() {
               Passed deterministic safety validation and entered matching pipeline.
             </p>
 
-            <div className="mt-4 p-3 rounded-2xl bg-slate-100 border border-slate-200 inline-block font-mono text-xs font-black text-slate-900">
-              Request ID: <span className="text-emerald-700">#{latestCreatedId || "REQ-1042"}</span>
-            </div>
+            {latestCreatedId && (
+              <div className="mt-4 p-3 rounded-2xl bg-slate-100 border border-slate-200 inline-block font-mono text-xs font-black text-slate-900">
+                Request ID: <span className="text-emerald-700">#{latestCreatedId}</span>
+              </div>
+            )}
 
             <div className="mt-2 text-xs text-slate-600 font-semibold">
               Pipeline Status: <span className="font-black text-amber-600">Pending Matching</span>
@@ -1685,75 +1588,50 @@ export default function CommunityRequestsPage() {
                 </div>
               </div>
 
-              {/* Delivery Verification Code & QR Code Display */}
-              <div className="rounded-3xl border border-sky-200 bg-sky-50/40 p-4 space-y-2">
-                <h4 className="text-xs font-black text-slate-900 flex items-center gap-2">
-                  <Sparkles size={15} className="text-sky-600" />
-                  Delivery Verification (Recipient / Coordinator Code)
-                </h4>
-                <p className="text-[11px] text-slate-500">
-                  Provide this Delivery OTP or QR code to the volunteer when they deliver the items to confirm delivery completion.
-                </p>
-                <QRCodeDisplay
-                  codeType="delivery"
-                  otpCode="410932"
-                  qrPayload={JSON.stringify({ task_id: selectedDetailRequest.id, type: "delivery", code: "410932" })}
-                  status={selectedDetailRequest.status === "COMPLETED" ? "verified" : "pending"}
-                />
-              </div>
+              {/* Real Pickup/Delivery Verification Status - the OTP itself
+                  is never shown here: it's exchanged in person between the
+                  volunteer and the donor/recipient, not displayed on a
+                  browsing screen. */}
+              {linkedTask && (
+                <div className="rounded-3xl border border-sky-200 bg-sky-50/40 p-4 space-y-2">
+                  <h4 className="text-xs font-black text-slate-900 flex items-center gap-2">
+                    <Sparkles size={15} className="text-sky-600" />
+                    Verification Status
+                  </h4>
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <div className="p-3 rounded-xl bg-white border border-sky-100">
+                      <span className="text-[10px] font-black uppercase text-slate-400">Pickup</span>
+                      <div className={`font-bold mt-0.5 ${linkedTask.pickup_verified ? "text-emerald-700" : "text-slate-500"}`}>
+                        {linkedTask.pickup_verified ? "Verified" : "Awaiting volunteer pickup"}
+                      </div>
+                    </div>
+                    <div className="p-3 rounded-xl bg-white border border-sky-100">
+                      <span className="text-[10px] font-black uppercase text-slate-400">Delivery</span>
+                      <div className={`font-bold mt-0.5 ${linkedTask.delivery_verified ? "text-emerald-700" : "text-slate-500"}`}>
+                        {linkedTask.delivery_verified ? "Verified" : "Not yet delivered"}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
-              {/* Status Lifecycle Timeline */}
+              {/* Status Lifecycle Timeline - derived from the real linked
+                  task's status/pickup_verified/delivery_verified, not the
+                  request's own coarser status, so it can show the
+                  volunteer-side sub-states truthfully. */}
               <div className="rounded-3xl border border-slate-200/80 bg-white p-5 shadow-xs">
                 <h4 className="text-xs font-black uppercase tracking-wider text-slate-400 mb-4 flex items-center justify-between">
                   <span>Lifecycle Timeline</span>
                   <span className="text-emerald-700 font-extrabold lowercase">
-                    {selectedDetailRequest.status === "PENDING"
+                    {linkedTask
+                      ? linkedTask.status.replace(/_/g, " ")
+                      : selectedDetailRequest.status === "PENDING"
                       ? "Finding compatible resources"
                       : selectedDetailRequest.status}
                   </span>
                 </h4>
 
-                <div className="relative flex items-center justify-between">
-                  <div className="absolute top-1/2 left-4 right-4 -translate-y-1/2 h-1.5 bg-slate-200 -z-0 rounded-full" />
-                  {[
-                    { label: "Created", step: 1 },
-                    { label: "Validated", step: 2 },
-                    { label: "Matched", step: 3 },
-                    { label: "Assigned", step: 4 },
-                    { label: "In Progress", step: 5 },
-                    { label: "Completed", step: 6 }
-                  ].map((node) => {
-                    const currentStep =
-                      selectedDetailRequest.status === "COMPLETED"
-                        ? 6
-                        : selectedDetailRequest.status === "IN_PROGRESS"
-                        ? 5
-                        : selectedDetailRequest.status === "ASSIGNED"
-                        ? 4
-                        : selectedDetailRequest.status === "MATCHED"
-                        ? 3
-                        : 2;
-
-                    const isDone = node.step <= currentStep;
-
-                    return (
-                      <div key={node.label} className="relative z-10 flex flex-col items-center">
-                        <div
-                          className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black border-2 transition-all ${
-                            isDone
-                              ? "bg-emerald-600 border-emerald-600 text-white shadow-md shadow-emerald-600/30"
-                              : "bg-white border-slate-300 text-slate-400"
-                          }`}
-                        >
-                          {isDone ? <Check size={15} strokeWidth={3} /> : node.step}
-                        </div>
-                        <span className="text-[11px] font-bold text-slate-700 mt-1.5 whitespace-nowrap">
-                          {node.label}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
+                <Timeline steps={buildRequesterTimeline(selectedDetailRequest, linkedTask)} />
               </div>
 
               {/* Matching Info */}
@@ -1762,7 +1640,7 @@ export default function CommunityRequestsPage() {
                   Resource & Volunteer Matching
                 </h4>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100">
                     <span className="text-[10px] font-black uppercase text-slate-400">Resource</span>
                     <p className="font-bold text-slate-900 mt-0.5">
@@ -1772,16 +1650,9 @@ export default function CommunityRequestsPage() {
                   </div>
 
                   <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100">
-                    <span className="text-[10px] font-black uppercase text-slate-400">Matched Depot / Donor</span>
-                    <p className="font-bold text-slate-900 mt-0.5">
-                      {selectedDetailRequest.matched_donor || "Community Food Bank"}
-                    </p>
-                  </div>
-
-                  <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100">
                     <span className="text-[10px] font-black uppercase text-slate-400">Assigned Volunteer</span>
                     <p className="font-bold text-slate-900 mt-0.5">
-                      {selectedDetailRequest.assigned_volunteer || "Awaiting assignment"}
+                      {linkedVolunteerName || "Awaiting assignment"}
                     </p>
                   </div>
                 </div>
@@ -1794,9 +1665,11 @@ export default function CommunityRequestsPage() {
                     <MapPin size={15} className="text-emerald-600" />
                     Target Destination
                   </h4>
-                  <span className="font-mono text-xs text-slate-500 font-bold">
-                    {selectedDetailRequest.latitude}° N, {selectedDetailRequest.longitude}° E
-                  </span>
+                  {selectedDetailRequest.zone && (
+                    <span className="font-mono text-xs text-slate-500 font-bold uppercase">
+                      {selectedDetailRequest.zone}
+                    </span>
+                  )}
                 </div>
 
                 <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100">

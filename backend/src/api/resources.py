@@ -46,12 +46,42 @@ def _get_optional_donor(
     )
 
 
+def _get_optional_viewer(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer_scheme),
+) -> Optional[User]:
+    """Best-effort caller identity for redaction purposes only - an
+    absent/invalid token means "anonymous", not a 401, since this listing
+    stays publicly browsable."""
+
+    if credentials is not None and credentials.credentials:
+        claims = decode_access_token(credentials.credentials)
+        if claims and "sub" in claims:
+            user = get_coordination_service().get_user(claims["sub"])
+            if user is not None and user.is_active:
+                return user
+    return None
+
+
+def _inventory_view(batch, viewer: Optional[User]) -> Dict[str, Any]:
+    """Redact the pickup OTP from anyone but the donor themself or a
+    coordinator/admin (mirrors feature/location-privacy in
+    api/volunteers.py) - it authorizes pickup and shouldn't be publicly
+    browsable."""
+
+    data = batch.model_dump()
+    is_owner = viewer is not None and viewer.user_id == batch.donor_org_id
+    is_privileged = viewer is not None and (viewer.is_coordinator or viewer.is_admin)
+    if not (is_owner or is_privileged):
+        data["pickup_otp"] = None
+    return data
+
+
 @router.get("")
 @router.get("/")
-async def list_inventory():
+async def list_inventory(viewer: Optional[User] = Depends(_get_optional_viewer)):
     """List inventory/resources."""
 
-    return get_coordination_service().state.inventory
+    return [_inventory_view(b, viewer) for b in get_coordination_service().state.inventory]
 
 
 @router.post("")

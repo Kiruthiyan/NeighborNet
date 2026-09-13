@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   LayoutDashboard,
   HeartHandshake,
@@ -23,8 +23,16 @@ import { useAuth } from "../lib/auth";
 export default function CommunityShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, logout } = useAuth();
+  const { user, loading, logout } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Route guard: nav items are hidden per-role, but that's cosmetic only -
+  // an unauthenticated visitor must not be able to sit on a /community/*
+  // page at all (mirrors AppShell's long-standing redirect-away behavior).
+  useEffect(() => {
+    if (loading) return;
+    if (!user) router.replace("/");
+  }, [loading, user, router]);
 
   const navItems = [
     { label: "Dashboard", href: "/community/dashboard", icon: LayoutDashboard },

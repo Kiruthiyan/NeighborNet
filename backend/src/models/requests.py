@@ -117,14 +117,23 @@ class Request(TimestampedModel):
         """Check if request can be fulfilled with given inventory batch."""
         if self.resource_type != inventory_batch.resource_type:
             return False
-        
+
         if self.quantity_remaining <= 0:
             return False
-        
+
+        # Regional isolation: a request only matches supply from its own
+        # region through ordinary matching. Cross-region help is a
+        # deliberate, coordinator-gated action (see
+        # CoordinationService.find_cross_region_supply), not something
+        # that should happen silently here. Batches/requests without a
+        # region set (legacy records) are left unrestricted.
+        if self.region and inventory_batch.region and self.region != inventory_batch.region:
+            return False
+
         # Check dietary restrictions
         if not self._matches_dietary_requirements(inventory_batch.dietary_metadata):
             return False
-        
+
         return True
     
     @field_validator("region")

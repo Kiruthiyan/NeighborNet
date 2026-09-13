@@ -2,7 +2,7 @@
 
 from typing import Any, Dict
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from src.auth.dependencies import get_current_user
 from src.models.users import User
@@ -58,6 +58,20 @@ async def list_volunteers(user: User = Depends(get_current_user)):
 
     volunteers = get_coordination_service().state.volunteers
     return [_volunteer_view(v, user) for v in volunteers]
+
+
+@router.get("/me")
+async def get_my_volunteer(user: User = Depends(get_current_user)):
+    """Return the caller's own volunteer record in full - no redaction is
+    needed since it's the caller's own data (mirrors the requester
+    self-access pattern in api/requests.py). Used by the frontend to
+    resolve the signed-in user's real volunteer_id instead of trusting a
+    client-supplied one."""
+
+    volunteer = get_coordination_service().get_volunteer_by_user_id(user.user_id)
+    if volunteer is None:
+        raise HTTPException(status_code=404, detail="No volunteer profile for this user")
+    return volunteer.model_dump()
 
 
 @router.get("/eligible")
