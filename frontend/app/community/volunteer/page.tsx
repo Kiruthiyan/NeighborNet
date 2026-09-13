@@ -86,8 +86,7 @@ export default function CommunityVolunteerPage() {
       {!myVolunteer && !loading && (
         <div className="p-4 rounded-2xl border border-amber-200 bg-amber-50 text-amber-900 text-xs font-semibold flex items-center gap-2">
           <AlertCircle size={16} className="shrink-0" />
-          No volunteer profile is linked to your account yet, so you can&apos;t accept tasks. Ask a coordinator to enable
-          volunteering for your account.
+          No volunteer profile is linked to your account yet, so you can&apos;t accept tasks.
         </div>
       )}
 

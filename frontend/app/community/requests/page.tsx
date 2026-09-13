@@ -16,7 +16,6 @@ import {
   Edit3,
   Trash2,
   Search,
-  Check,
   ShieldCheck,
   ShieldAlert,
   ShieldX,
